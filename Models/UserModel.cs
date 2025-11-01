@@ -27,7 +27,7 @@ namespace InvoiceService.Models
 
         // Navigation
         public ICollection<Customer>? Customers { get; set; }
-        public ICollection<InvoiceItem>? Invoices { get; set; }
+        public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
