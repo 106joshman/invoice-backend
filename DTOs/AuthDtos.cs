@@ -8,14 +8,12 @@ namespace InvoiceService.DTOs
         public required string FullName { get; set; }
 
         [Required]
-        [DataType(DataType.Password)]
-        public required string Password { get; set; }
-
-        [Required]
         [EmailAddress]
         public required string Email { get; set; }
 
-        public required string Role { get; set; } = "User";
+        [Required]
+        [DataType(DataType.Password)]
+        public required string Password { get; set; }
     }
 
     public class UserLoginDto
@@ -29,22 +27,14 @@ namespace InvoiceService.DTOs
         public required string Password { get; set; }
     }
 
-    public class UserAuthResponseDto
+    public class AuthResponseDto
     {
         public required string Token { get; set; }
-
-        public required string RefreshToken { get; set; }
-
         public Guid UserId { get; set; }
-
         public required string FullName { get; set; }
-
+        public required string Email { get; set; }
         public required string Role { get; set; }
-
         public DateTime CreatedAt { get; set; }
-
-        public DateTime? LastLogin { get; set; }
-
         public string Message { get; set; } = "User created successfully";
     }
 }

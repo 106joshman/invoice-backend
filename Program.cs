@@ -4,6 +4,7 @@ using System.Text;
 using InvoiceService.Data;
 using InvoiceService.Middleware;
 using InvoiceService.Seeders;
+using InvoiceService.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -57,9 +58,9 @@ builder.Configuration.GetConnectionString("DefaultConnection")
 ));
 
 // REGISTER ALL SERVICE HERE
-// builder.Services.AddScoped<>();
-// builder.Services.AddScoped<>();
-// builder.Services.AddScoped<>();
+builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<CustomerService>();
 // builder.Services.AddScoped<>();
 
 // CONFIGURE JWT AUTHENTICATION
@@ -98,15 +99,15 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 // CONFIGURE FOR CORS POLICY FOR FRONTEND
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowFrontendClients", builder =>
+    options.AddPolicy("AllowFrontendClients", policy =>
     {
-        builder.SetIsOriginAllowed(origin =>
+        policy.SetIsOriginAllowed(origin =>
         {
             var uri = new Uri(origin);
-            return uri.Host == "localhost" || uri.Host == "http://localhost:3000/";
+            return uri.Host == "localhost" || uri.Host == "10.245.85.115";
         })
-        .AllowAnyMethod()
         .AllowAnyHeader()
+        .AllowAnyMethod()
         .AllowCredentials();
     });
 });
@@ -158,8 +159,6 @@ using (var scope = app.Services.CreateScope())
     catch (Exception ex)
     {
        Console.WriteLine($"Migration failed: {ex.Message}");
-        // Don't throw in production - let app start even if migration fails
-        // You can then fix and redeploy
     }
 }
 
@@ -176,11 +175,11 @@ if (app.Environment.IsDevelopment())
     });
 }
 
+app.UseCors("AllowFrontendClients");
 app.UseHttpsRedirection();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
-app.UseCors("AllowFrontendClients");
 app.MapControllers();
 
 app.Run();
