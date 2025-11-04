@@ -14,8 +14,8 @@ namespace InvoiceService.Models
         public int Quantity { get; set; }
         [Required]
         public decimal UnitPrice { get; set; }
-        [NotMapped]
-        public decimal Amount => Quantity * UnitPrice;
+        [Required]
+        public decimal Amount { get; set; }
 
         // Relationship
         [ForeignKey(nameof(Invoice))]

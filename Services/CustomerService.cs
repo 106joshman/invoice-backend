@@ -122,10 +122,15 @@ public class CustomerService(ApplicationDbContext context)
 
     public async Task DeleteCustomer(Guid customerId, Guid userId)
     {
-        var customer = await _context.Customers.FirstOrDefaultAsync(c => c.Id == customerId) ?? throw new KeyNotFoundException("Customer not found");
+        var customer = await _context.Customers
+        .Include(c => c.Invoices)
+        .FirstOrDefaultAsync(c => c.Id == customerId && c.UserId == userId) ?? throw new KeyNotFoundException("Customer not found");
 
         if (customer.UserId != userId)
             throw new UnauthorizedAccessException("You do not have permission to delete this customer.");
+
+        if (customer.Invoices.Any())
+        throw new InvalidOperationException("Cannot delete customer with existing invoices.");
 
         _context.Customers.Remove(customer);
         await _context.SaveChangesAsync();

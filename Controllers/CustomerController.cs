@@ -39,10 +39,6 @@ public class CustomerController(CustomerService customerService) : ControllerBas
             // 404 ERROR
             return NotFound(new { message = ex.Message });
         }
-        catch (Exception ex)
-        {
-            return BadRequest(new { message = ex.Message });
-        }
     }
 
     [HttpPut("{customerId}")]

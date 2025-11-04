@@ -35,26 +35,28 @@ namespace InvoiceService.Data
                         .HasForeignKey<PaymentInfo>(p => p.UserId)
                         .OnDelete(DeleteBehavior.Cascade);
 
-                    // 1-TO-1 RELATIONSHIP WITH CUSTOMERS
+                    // 1-TO-1 USER RELATIONSHIP WITH CUSTOMERS
                     entity.HasMany(u => u.Customers)
                         .WithOne(c => c.User)
                         .HasForeignKey(c => c.UserId)
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Restrict);
 
-                    // 1-TO-MANY RELATIONSHIP WITH INVOICES
+                    // 1-TO-MANY USER RELATIONSHIP WITH INVOICES
                     entity.HasMany(u => u.Invoices)
                         .WithOne(i => i.User)
                         .HasForeignKey(i => i.UserId)
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Restrict);
                 });
 
                 // ---------------- CUSTOMERS ----------------
                 modelBuilder.Entity<Customer>(entity =>
                 {
                     entity.HasKey(c => c.Id);
+
                     entity.Property(c => c.Name)
                     .IsRequired()
                     .HasMaxLength(200);
+
                     entity.HasIndex(c => new { c.Email, c.UserId })
                     .IsUnique(); // a user can’t duplicate a customer email
                 });
@@ -75,13 +77,13 @@ namespace InvoiceService.Data
                     entity.HasOne(i => i.User)
                         .WithMany(u => u.Invoices)
                         .HasForeignKey(i => i.UserId)
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     // Invoice -> Customer
                     entity.HasOne(i => i.Customer)
                         .WithMany(c => c.Invoices)
                         .HasForeignKey(i => i.CustomerId)
-                        .OnDelete(DeleteBehavior.Cascade);
+                        .OnDelete(DeleteBehavior.Restrict);
 
                     // Invoice -> Items
                     entity.HasMany(i => i.Items)
@@ -94,6 +96,7 @@ namespace InvoiceService.Data
                 modelBuilder.Entity<InvoiceItem>(entity =>
                 {
                     entity.HasKey(it => it.Id);
+
                     entity.Property(it => it.Description)
                     .IsRequired()
                     .HasMaxLength(255);
@@ -103,6 +106,7 @@ namespace InvoiceService.Data
                 modelBuilder.Entity<PaymentInfo>(entity =>
                 {
                     entity.HasKey(p => p.Id);
+                    
                     entity.HasIndex(p => p.AccountNumber);
                 });
         }

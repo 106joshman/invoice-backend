@@ -18,6 +18,15 @@ public class InvoiceItemResponseDto
     public decimal Amount { get; set; }
 }
 
+public class InvoiceItemUpdateDto
+{
+    public Guid? Id { get; set; }
+    public string Description { get; set; } = string.Empty;
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+    public decimal Amount { get; set; }
+}
+
 public class InvoiceRequestDto
 {
     public Guid CustomerId { get; set; }
@@ -36,7 +45,6 @@ public class InvoiceRequestDto
 
 public class InvoiceResponseDto
 {
-
     public Guid Id { get; set; }
     public string InvoiceNumber { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
@@ -56,4 +64,16 @@ public class InvoiceResponseDto
 public class LastInvoiceNumberResponseDto
 {
     public string? LastInvoiceNumber { get; set; }
+}
+
+public class InvoiceUpdateDto
+{
+    public string? Status { get; set; }
+    public string? Notes { get; set; }
+    public decimal? Subtotal { get; set; }
+    public decimal? TaxRate { get; set; }
+    public decimal? TaxAmount { get; set; }
+    public decimal? Discount { get; set; }
+    public decimal? Total { get; set; }
+    public List<InvoiceItemUpdateDto>? Items { get; set; } = [];
 }

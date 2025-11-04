@@ -61,7 +61,7 @@ builder.Configuration.GetConnectionString("DefaultConnection")
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CustomerService>();
-// builder.Services.AddScoped<>();
+builder.Services.AddScoped<InvoiceServices>();
 
 // CONFIGURE JWT AUTHENTICATION
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
