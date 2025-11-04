@@ -98,7 +98,7 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         }
     }
 
-    [HttpPut("{invoiceId}")]
+    [HttpPut("update/{invoiceId}")]
     public async Task<IActionResult> UpdateInvoice(Guid invoiceId, [FromBody] InvoiceUpdateDto invoiceUpdateDto)
     {
         try
