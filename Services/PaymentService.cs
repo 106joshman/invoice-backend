@@ -1,0 +1,94 @@
+using InvoiceService.Data;
+using InvoiceService.DTOs;
+using InvoiceService.Helpers;
+using InvoiceService.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace InvoiceService.Services
+{
+    public class PaymentService(ApplicationDbContext context, EncryptionHelper encryptionHelper)
+    {
+        private readonly ApplicationDbContext _context = context;
+        private readonly EncryptionHelper _encryptionHelper = encryptionHelper;
+
+        public async Task<PaymentInfoResponseDto> CreateOrUpdatePaymentInfoAsync(Guid userId, PaymentInfoRequestDto dto)
+        {
+            // Ensure user exists
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)
+                ?? throw new KeyNotFoundException("User not found.");
+
+            // Find existing payment info for user
+            var existingPaymentInfo = await _context.PaymentInfo
+                .FirstOrDefaultAsync(p => p.UserId == userId);
+
+            // Encrypt sensitive data
+            var encryptedAccountNumber = _encryptionHelper.Encrypt(dto.AccountNumber);
+
+            if (existingPaymentInfo == null)
+            {
+                // Create new record
+                var newPaymentInfo = new PaymentInfo
+                {
+                    UserId = userId,
+                    BankName = dto.BankName,
+                    AccountName = dto.AccountName,
+                    AccountNumber = encryptedAccountNumber,
+                    RoutingNumber = dto.RoutingNumber,
+                    SwiftCode = dto.SwiftCode,
+                    IBAN = dto.IBAN,
+                    PaymentTerms = dto.PaymentTerms
+                };
+
+                _context.PaymentInfo.Add(newPaymentInfo);
+                await _context.SaveChangesAsync();
+
+                return MapToResponse(newPaymentInfo, dto.AccountNumber);
+            }
+            else
+            {
+                // Update existing record
+                existingPaymentInfo.BankName = dto.BankName;
+                existingPaymentInfo.AccountName = dto.AccountName;
+                existingPaymentInfo.AccountNumber = encryptedAccountNumber;
+                existingPaymentInfo.RoutingNumber = dto.RoutingNumber;
+                existingPaymentInfo.SwiftCode = dto.SwiftCode;
+                existingPaymentInfo.IBAN = dto.IBAN;
+                existingPaymentInfo.PaymentTerms = dto.PaymentTerms;
+
+                _context.PaymentInfo.Update(existingPaymentInfo);
+                await _context.SaveChangesAsync();
+
+                return MapToResponse(existingPaymentInfo, dto.AccountNumber);
+            }
+        }
+
+        public async Task<PaymentInfoResponseDto?> GetPaymentInfoAsync(Guid userId)
+        {
+            var paymentInfo = await _context.PaymentInfo
+                .FirstOrDefaultAsync(p => p.UserId == userId);
+
+            if (paymentInfo == null)
+                return null;
+
+            // Decrypt account number
+            var decryptedAccountNumber = _encryptionHelper.Decrypt(paymentInfo.AccountNumber);
+
+            return MapToResponse(paymentInfo, decryptedAccountNumber);
+        }
+
+        private static PaymentInfoResponseDto MapToResponse(PaymentInfo entity, string decryptedAccountNumber)
+        {
+            return new PaymentInfoResponseDto
+            {
+                Id = entity.Id,
+                BankName = entity.BankName,
+                AccountName = entity.AccountName,
+                AccountNumber = decryptedAccountNumber,
+                RoutingNumber = entity.RoutingNumber,
+                SwiftCode = entity.SwiftCode,
+                IBAN = entity.IBAN,
+                PaymentTerms = entity.PaymentTerms
+            };
+        }
+    }
+}

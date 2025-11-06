@@ -127,4 +127,32 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
             return NotFound(ex.Message);
         }
     }
+
+    [HttpGet("{invoiceId}")]
+    public async Task<IActionResult> GetSingleInvoice(Guid invoiceId)
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid or missing identity access." });
+
+            var userId = Guid.Parse(currentUserId);
+            var response = await _invoiceService.GetSingleInvoiceAsync(userId, invoiceId);
+
+            return Ok(new { message = "Invoice retrieved successfully", response });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }

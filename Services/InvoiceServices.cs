@@ -13,8 +13,24 @@ public class InvoiceServices(ApplicationDbContext context)
     {
         var user = await _context.Users.FindAsync(userId) ?? throw new KeyNotFoundException("user not found");
 
+        // ✅ Reset invoice count if new month
+        if (user.LastInvoiceReset == null || user.LastInvoiceReset.Value.Month != DateTime.UtcNow.Month)
+        {
+            user.MonthlyInvoiceCount = 0;
+            user.LastInvoiceReset = DateTime.UtcNow;
+        }
+
+        // CHECK SUBSCRIPTION LIMIT
+        if (user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2)
+            throw new InvalidOperationException("Free plan users can only create 2 invoices per month. Please upgrade to continue.");
+
         var customer = await _context.Customers
             .FirstOrDefaultAsync(c => c.Id == invoiceRequestDto.CustomerId && c.UserId == userId) ?? throw new UnauthorizedAccessException("Invalid customer details.");
+
+        // ✅ Calculate subtotal, tax, total from backend
+        var subtotal = invoiceRequestDto.Items.Sum(i => i.Quantity * i.UnitPrice);
+        var taxAmount = subtotal * (invoiceRequestDto.TaxRate / 100);
+        var total = subtotal + taxAmount - invoiceRequestDto.Discount;
 
         var invoice = new Invoice
         {
@@ -22,33 +38,28 @@ public class InvoiceServices(ApplicationDbContext context)
             Status = invoiceRequestDto.Status,
             IssueDate = invoiceRequestDto.IssueDate,
             DueDate = invoiceRequestDto.DueDate,
-            Subtotal = invoiceRequestDto.Subtotal,
             TaxRate = invoiceRequestDto.TaxRate,
-            TaxAmount = invoiceRequestDto.TaxAmount,
             Discount = invoiceRequestDto.Discount,
-            Total = invoiceRequestDto.Total,
             Notes = invoiceRequestDto.Notes,
             CustomerId = invoiceRequestDto.CustomerId,
+            Subtotal = subtotal,
+            TaxAmount = taxAmount,
+            Total = total,
             Customer = customer,
             UserId = userId,
-            User = user
+            User = user,
+            // ✅ Add invoice items
+            Items = [.. invoiceRequestDto.Items.Select(item => new InvoiceItem
+            {
+                Description = item.Description,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPrice,
+                Amount = item.Quantity * item.UnitPrice,
+            })]
         };
 
-        // ✅ Add invoice items
-        foreach (var itemDto in invoiceRequestDto.Items)
-        {
-            var item = new InvoiceItem
-            {
-                Description = itemDto.Description,
-                Quantity = itemDto.Quantity,
-                UnitPrice = itemDto.UnitPrice,
-                Amount = itemDto.Amount,
-                Invoice = invoice
-            };
-            invoice.Items.Add(item);
-        }
-
         _context.Invoices.Add(invoice);
+        user.MonthlyInvoiceCount += 1;
         await _context.SaveChangesAsync();
 
         // ✅ Map to response DTO
@@ -171,12 +182,69 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<InvoiceResponseDto> UpdateInvoice(Guid userId, Guid invoiceId, InvoiceUpdateDto  invoiceUpdateDto)
+    public async Task<InvoiceResponseDto> UpdateInvoice(Guid userId, Guid invoiceId, InvoiceUpdateDto invoiceUpdateDto)
     {
         var invoice = await _context.Invoices
             .Include(i => i.Items)
             .Include(i => i.Customer)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.UserId == userId) ?? throw new UnauthorizedAccessException("Invoice not found or you do not have access to it.");
+            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.UserId == userId)
+            ?? throw new UnauthorizedAccessException("Invoice not found or you do not have access to it.");
+
+        var user = await _context.Users.FindAsync(userId)
+            ?? throw new KeyNotFoundException("User not found.");
+
+        // ✅ Check if Free user has reached their invoice limit
+        bool isFreeUser = user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2;
+
+        if (isFreeUser)
+        {
+            // 🧾 Allow only non-financial updates
+            if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Status))
+                invoice.Status = invoiceUpdateDto.Status;
+
+            if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Notes))
+                invoice.Notes = invoiceUpdateDto.Notes;
+
+            if (invoiceUpdateDto.DueDate.HasValue)
+                invoice.DueDate = invoiceUpdateDto.DueDate.Value;
+
+            invoice.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return new InvoiceResponseDto
+            {
+                Id = invoice.Id,
+                InvoiceNumber = invoice.InvoiceNumber,
+                Status = invoice.Status,
+                IssueDate = invoice.IssueDate,
+                DueDate = invoice.DueDate,
+                Subtotal = invoice.Subtotal,
+                TaxRate = invoice.TaxRate,
+                TaxAmount = invoice.TaxAmount,
+                Discount = invoice.Discount,
+                Total = invoice.Total,
+                Notes = invoice.Notes,
+                CreatedAt = invoice.CreatedAt,
+                Customer = new CustomerResponseDto
+                {
+                    Id = invoice.Customer.Id,
+                    Name = invoice.Customer.Name,
+                    Email = invoice.Customer.Email,
+                    Company = invoice.Customer.Company,
+                    Address = invoice.Customer.Address,
+                    PhoneNumber = invoice.Customer.PhoneNumber,
+                    CreatedAt = invoice.Customer.CreatedAt
+                },
+                Items = invoice.Items.Select(it => new InvoiceItemResponseDto
+                {
+                    Id = it.Id,
+                    Description = it.Description,
+                    Quantity = it.Quantity,
+                    UnitPrice = it.UnitPrice,
+                    Amount = it.Amount
+                }).ToList()
+            };
+        }
 
         if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Status))
             invoice.Status = invoiceUpdateDto.Status;
@@ -184,57 +252,32 @@ public class InvoiceServices(ApplicationDbContext context)
         if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Notes))
             invoice.Notes = invoiceUpdateDto.Notes;
 
-        if (invoiceUpdateDto.Subtotal.HasValue)
-            invoice.Subtotal = invoiceUpdateDto.Subtotal.Value;
-
-        if (invoiceUpdateDto.TaxRate.HasValue)
-            invoice.TaxRate = invoiceUpdateDto.TaxRate.Value;
-
-        if (invoiceUpdateDto.TaxAmount.HasValue)
-            invoice.TaxAmount = invoiceUpdateDto.TaxAmount.Value;
-
-        if (invoiceUpdateDto.Discount.HasValue)
-            invoice.Discount = invoiceUpdateDto.Discount.Value;
-
-        if (invoiceUpdateDto.Total.HasValue)
-            invoice.Total = invoiceUpdateDto.Total.Value;
+        if (invoiceUpdateDto.DueDate.HasValue)
+            invoice.DueDate = invoiceUpdateDto.DueDate.Value;
 
         // ✅ Handle Invoice Items Update
-        if (invoiceUpdateDto.Items != null && invoiceUpdateDto.Items.Count != 0)
+        if (invoiceUpdateDto.Items != null && invoiceUpdateDto.Items.Count > 0)
         {
-            foreach (var itemDto in invoiceUpdateDto.Items)
+            // Clear existing items
+            _context.InvoiceItems.RemoveRange(invoice.Items);
+
+            // Add new items and recalculate amounts
+            invoice.Items = invoiceUpdateDto.Items.Select(it => new InvoiceItem
             {
-                if (itemDto.Id.HasValue)
-                {
-                    // Update existing item
-                    var existingItem = invoice.Items.FirstOrDefault(it => it.Id == itemDto.Id.Value);
-                    if (existingItem != null)
-                    {
-                        existingItem.Description = itemDto.Description;
-                        existingItem.Quantity = itemDto.Quantity;
-                        existingItem.UnitPrice = itemDto.UnitPrice;
-                        existingItem.Amount = itemDto.Amount;
-                    }
-                }
-                else
-                {
-                    // Add new item
-                    var newItem = new InvoiceItem
-                    {
-                        Description = itemDto.Description,
-                        Quantity = itemDto.Quantity,
-                        UnitPrice = itemDto.UnitPrice,
-                        Amount = itemDto.Amount,
-                        InvoiceId = invoice.Id
-                    };
-                    invoice.Items.Add(newItem);
-                }
-            }
+                Description = it.Description,
+                Quantity = it.Quantity,
+                UnitPrice = it.UnitPrice,
+                Amount = it.Quantity * it.UnitPrice,
+                InvoiceId = invoice.Id
+            }).ToList();
         }
 
+        // Recalculate financials
+        invoice.Subtotal = invoice.Items.Sum(i => i.Quantity * i.UnitPrice);
+        invoice.TaxAmount = invoice.Subtotal * (invoice.TaxRate / 100);
+        invoice.Total = invoice.Subtotal + invoice.TaxAmount - invoice.Discount;
         invoice.UpdatedAt = DateTime.UtcNow;
 
-        // ✅ Save all changes
         await _context.SaveChangesAsync();
 
         // ✅ Return updated invoice DTO
@@ -270,6 +313,50 @@ public class InvoiceServices(ApplicationDbContext context)
                 UnitPrice = it.UnitPrice,
                 Amount = it.Amount // computed
             }).ToList()
+        };
+    }
+
+    public async Task<InvoiceResponseDto> GetSingleInvoiceAsync(Guid userId, Guid invoiceId)
+    {
+        var invoice = await _context.Invoices
+            .Include(i => i.Customer)
+            .Include(i => i.Items)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.UserId == userId)
+            ?? throw new KeyNotFoundException("Invoice not found or you don't have permission to view it.");
+            return new InvoiceResponseDto
+        {
+            Id = invoice.Id,
+            InvoiceNumber = invoice.InvoiceNumber,
+            Status = invoice.Status,
+            IssueDate = invoice.IssueDate,
+            DueDate = invoice.DueDate,
+            Subtotal = invoice.Subtotal,
+            TaxRate = invoice.TaxRate,
+            TaxAmount = invoice.TaxAmount,
+            Discount = invoice.Discount,
+            Total = invoice.Total,
+            Notes = invoice.Notes,
+            CreatedAt = invoice.CreatedAt,
+
+            Customer = new CustomerResponseDto
+            {
+                Id = invoice.Customer.Id,
+                Name = invoice.Customer.Name,
+                Email = invoice.Customer.Email,
+                Company = invoice.Customer.Company,
+                Address = invoice.Customer.Address,
+                PhoneNumber = invoice.Customer.PhoneNumber,
+                CreatedAt = invoice.Customer.CreatedAt
+            },
+
+            Items = [.. invoice.Items.Select(it => new InvoiceItemResponseDto
+            {
+                Id = it.Id,
+                Description = it.Description,
+                Quantity = it.Quantity,
+                UnitPrice = it.UnitPrice,
+                Amount = it.Amount
+            })]
         };
     }
 }

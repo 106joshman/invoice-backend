@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using InvoiceService.Data;
+using InvoiceService.Helpers;
 using InvoiceService.Middleware;
 using InvoiceService.Seeders;
 using InvoiceService.Services;
@@ -57,11 +58,42 @@ builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql
 builder.Configuration.GetConnectionString("DefaultConnection")
 ));
 
+var encryptionKey = builder.Configuration["Encryption:Key"];
+var encryptionIV = builder.Configuration["Encryption:IV"];
+
+if (string.IsNullOrWhiteSpace(encryptionKey) || string.IsNullOrWhiteSpace(encryptionIV))
+{
+    throw new InvalidOperationException("❌ Encryption Key or IV is missing in configuration.");
+}
+
+byte[] keyBytes;
+byte[] ivBytes;
+
+try
+{
+    keyBytes = Convert.FromBase64String(encryptionKey.Trim());
+    ivBytes = Convert.FromBase64String(encryptionIV.Trim());
+}
+catch (FormatException ex)
+{
+    throw new InvalidOperationException("❌ Encryption Key or IV is not valid Base64 format.", ex);
+}
+
+// Validate sizes — Key must be 32 bytes, IV must be 16 bytes
+if (keyBytes.Length != 32 || ivBytes.Length != 16)
+{
+    throw new InvalidOperationException($"❌ Invalid key or IV size. Expected Key: 32 bytes, IV: 16 bytes, got Key: {keyBytes.Length}, IV: {ivBytes.Length}");
+}
+
+Console.WriteLine($"✅ Encryption key length: {keyBytes.Length}, IV length: {ivBytes.Length}");
+
 // REGISTER ALL SERVICE HERE
+builder.Services.AddSingleton<EncryptionHelper>();
 builder.Services.AddScoped<UserService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<InvoiceServices>();
+builder.Services.AddScoped<PaymentService>();
 
 // CONFIGURE JWT AUTHENTICATION
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

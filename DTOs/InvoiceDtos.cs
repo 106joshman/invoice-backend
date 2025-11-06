@@ -1,4 +1,3 @@
-
 namespace InvoiceService.DTOs;
 
 public class InvoiceItemRequestDto
@@ -71,6 +70,7 @@ public class InvoiceUpdateDto
     public string? Status { get; set; }
     public string? Notes { get; set; }
     public decimal? Subtotal { get; set; }
+    public DateTime? DueDate { get; set; }
     public decimal? TaxRate { get; set; }
     public decimal? TaxAmount { get; set; }
     public decimal? Discount { get; set; }

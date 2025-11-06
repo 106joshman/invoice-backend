@@ -71,7 +71,6 @@ public class ErrorHandlingMiddleware(RequestDelegate next, ILogger<ErrorHandling
                     errorResponse.Error = "NotFound";
                     errorResponse.Message = ex.Message;
                     break;
-
                 // BAD REQUEST (400)
                 case ArgumentException:
                 case InvalidOperationException:

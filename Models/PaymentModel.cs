@@ -14,4 +14,5 @@ public class PaymentInfo
     // Relationship
     public Guid UserId { get; set; }
     public User User { get; set; } = default!;
+    public DateTime UpdatedAt { get; internal set; }
 }

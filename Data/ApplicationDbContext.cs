@@ -22,93 +22,93 @@ namespace InvoiceService.Data
             base.OnModelCreating(modelBuilder);
 
             // ---------------- USERS ----------------
-                modelBuilder.Entity<User>(entity =>
-                {
-                    entity.HasKey(u => u.Id);
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(u => u.Id);
 
-                    entity.HasIndex(u => u.Email)
-                        .IsUnique();
+                entity.HasIndex(u => u.Email)
+                    .IsUnique();
 
-                    // 1-TO-1 RELATIONSHIP WITH PAYMENT INFO
-                    entity.HasOne(u => u.PaymentInfo)
-                        .WithOne(p => p.User)
-                        .HasForeignKey<PaymentInfo>(p => p.UserId)
-                        .OnDelete(DeleteBehavior.Cascade);
+                // 1-TO-1 RELATIONSHIP WITH PAYMENT INFO
+                entity.HasOne(u => u.PaymentInfo)
+                    .WithOne(p => p.User)
+                    .HasForeignKey<PaymentInfo>(p => p.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-                    // 1-TO-1 USER RELATIONSHIP WITH CUSTOMERS
-                    entity.HasMany(u => u.Customers)
-                        .WithOne(c => c.User)
-                        .HasForeignKey(c => c.UserId)
-                        .OnDelete(DeleteBehavior.Restrict);
+                // 1-TO-1 USER RELATIONSHIP WITH CUSTOMERS
+                entity.HasMany(u => u.Customers)
+                    .WithOne(c => c.User)
+                    .HasForeignKey(c => c.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                    // 1-TO-MANY USER RELATIONSHIP WITH INVOICES
-                    entity.HasMany(u => u.Invoices)
-                        .WithOne(i => i.User)
-                        .HasForeignKey(i => i.UserId)
-                        .OnDelete(DeleteBehavior.Restrict);
-                });
+                // 1-TO-MANY USER RELATIONSHIP WITH INVOICES
+                entity.HasMany(u => u.Invoices)
+                    .WithOne(i => i.User)
+                    .HasForeignKey(i => i.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
-                // ---------------- CUSTOMERS ----------------
-                modelBuilder.Entity<Customer>(entity =>
-                {
-                    entity.HasKey(c => c.Id);
+            // ---------------- CUSTOMERS ----------------
+            modelBuilder.Entity<Customer>(entity =>
+            {
+                entity.HasKey(c => c.Id);
 
-                    entity.Property(c => c.Name)
+                entity.Property(c => c.Name)
+                .IsRequired()
+                .HasMaxLength(200);
+
+                entity.HasIndex(c => new { c.Email, c.UserId })
+                .IsUnique(); // a user can’t duplicate a customer email
+            });
+
+            // ---------------- INVOICES ----------------
+            modelBuilder.Entity<Invoice>(entity =>
+            {
+                entity.HasKey(i => i.Id);
+
+                entity.HasIndex(i => i.InvoiceNumber)
+                    .IsUnique();
+
+                entity.Property(i => i.InvoiceNumber)
                     .IsRequired()
-                    .HasMaxLength(200);
+                    .HasMaxLength(50);
 
-                    entity.HasIndex(c => new { c.Email, c.UserId })
-                    .IsUnique(); // a user can’t duplicate a customer email
-                });
+                // Invoice -> User
+                entity.HasOne(i => i.User)
+                    .WithMany(u => u.Invoices)
+                    .HasForeignKey(i => i.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                // ---------------- INVOICES ----------------
-                modelBuilder.Entity<Invoice>(entity =>
-                {
-                    entity.HasKey(i => i.Id);
+                // Invoice -> Customer
+                entity.HasOne(i => i.Customer)
+                    .WithMany(c => c.Invoices)
+                    .HasForeignKey(i => i.CustomerId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-                    entity.HasIndex(i => i.InvoiceNumber)
-                        .IsUnique();
+                // Invoice -> Items
+                entity.HasMany(i => i.Items)
+                    .WithOne(it => it.Invoice)
+                    .HasForeignKey(it => it.InvoiceId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
-                    entity.Property(i => i.InvoiceNumber)
-                        .IsRequired()
-                        .HasMaxLength(50);
+            // ---------------- INVOICE ITEMS ----------------
+            modelBuilder.Entity<InvoiceItem>(entity =>
+            {
+                entity.HasKey(it => it.Id);
 
-                    // Invoice -> User
-                    entity.HasOne(i => i.User)
-                        .WithMany(u => u.Invoices)
-                        .HasForeignKey(i => i.UserId)
-                        .OnDelete(DeleteBehavior.Restrict);
+                entity.Property(it => it.Description)
+                .IsRequired()
+                .HasMaxLength(255);
+            });
 
-                    // Invoice -> Customer
-                    entity.HasOne(i => i.Customer)
-                        .WithMany(c => c.Invoices)
-                        .HasForeignKey(i => i.CustomerId)
-                        .OnDelete(DeleteBehavior.Restrict);
+            // ---------------- PAYMENT INFO ----------------
+            modelBuilder.Entity<PaymentInfo>(entity =>
+            {
+                entity.HasKey(p => p.Id);
 
-                    // Invoice -> Items
-                    entity.HasMany(i => i.Items)
-                        .WithOne(it => it.Invoice)
-                        .HasForeignKey(it => it.InvoiceId)
-                        .OnDelete(DeleteBehavior.Cascade);
-                });
-
-                // ---------------- INVOICE ITEMS ----------------
-                modelBuilder.Entity<InvoiceItem>(entity =>
-                {
-                    entity.HasKey(it => it.Id);
-
-                    entity.Property(it => it.Description)
-                    .IsRequired()
-                    .HasMaxLength(255);
-                });
-
-                // ---------------- PAYMENT INFO ----------------
-                modelBuilder.Entity<PaymentInfo>(entity =>
-                {
-                    entity.HasKey(p => p.Id);
-                    
-                    entity.HasIndex(p => p.AccountNumber);
-                });
+                entity.HasIndex(p => p.AccountNumber);
+            });
         }
     }
 }
