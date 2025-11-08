@@ -44,6 +44,8 @@ public class UserService(ApplicationDbContext context)
             user.PhoneNumber = userUpdateDto.PhoneNumber;
         if (!string.IsNullOrWhiteSpace(userUpdateDto.CompanyLogo))
             user.CompanyLogo = userUpdateDto.CompanyLogo;
+        if (!string.IsNullOrWhiteSpace(userUpdateDto.BusinessName))
+            user.BusinessName = userUpdateDto.BusinessName;
 
         _context.Users.Update(user);
         await _context.SaveChangesAsync();
@@ -171,7 +173,7 @@ public class UserService(ApplicationDbContext context)
     {
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Id == userId) ?? throw new Exception("User not found");
-            
+
         if (!BCrypt.Net.BCrypt.Verify(changePasswordDto.CurrentPassword, user.Password))
         {
             throw new Exception("Current password is incorrect!");

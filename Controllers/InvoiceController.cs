@@ -155,4 +155,36 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpDelete("{invoiceId}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteCustomer(Guid invoiceId)
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid or missing identity access." });
+
+            var userId = Guid.Parse(currentUserId);
+
+            await _invoiceService.DeleteInvoice(invoiceId, userId);
+
+            return Ok(new { message = "Invoice deleted successfully." });
+
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }

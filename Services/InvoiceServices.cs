@@ -193,6 +193,10 @@ public class InvoiceServices(ApplicationDbContext context)
         var user = await _context.Users.FindAsync(userId)
             ?? throw new KeyNotFoundException("User not found.");
 
+        // ✅ Restrict Free users when monthly invoice count is maxed
+        if (user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2)
+            throw new InvalidOperationException("Free plan users cannot edit invoices once the monthly limit is reached. Please upgrade to continue.");
+
         // ✅ Check if Free user has reached their invoice limit
         bool isFreeUser = user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2;
 
@@ -358,5 +362,14 @@ public class InvoiceServices(ApplicationDbContext context)
                 Amount = it.Amount
             })]
         };
+    }
+
+    public async Task DeleteInvoice(Guid invoiceId, Guid userId)
+    {
+        var invoice = await _context.Invoices
+        .FirstOrDefaultAsync(c => c.Id == invoiceId && c.UserId == userId) ?? throw new UnauthorizedAccessException("Invoice not found or you do not have permission to delete it.");
+
+        _context.Invoices.Remove(invoice);
+        await _context.SaveChangesAsync();
     }
 }
