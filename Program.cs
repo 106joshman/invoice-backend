@@ -54,9 +54,45 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 // CONFIGURE POSTGRESQL DATABASE CONTEXT
-builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(
-builder.Configuration.GetConnectionString("DefaultConnection")
-));
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+{
+    string connectionString;
+
+    var databaseURL = Environment.GetEnvironmentVariable("DATABASE_URL");
+
+    if (!string.IsNullOrEmpty(databaseURL))
+    {
+        try
+        {
+            var uri = new Uri(databaseURL);
+
+            // Extract username and password safely
+            var userInfo = uri.UserInfo.Split(':');
+            var username = userInfo.Length > 0 ? userInfo[0] : "";
+            var password = userInfo.Length > 1 ? userInfo[1] : "";
+
+            // Extract database name (remove leading slash)
+            var database = uri.AbsolutePath.TrimStart('/');
+
+            // Use default port 5432 if not specified
+            var port = uri.Port > 0 ? uri.Port : 5432;
+
+            connectionString =
+                $"Host={uri.Host};" +
+                $"Port={port};" +
+                $"Database={database};" +
+                $"Username={username};" +
+                $"Password={password};" +
+                "SSL Mode=Require;" +
+                "Trust Server Certificate=true;";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error parsing DATABASE_URL: {ex.Message}");
+            throw;
+        }
+    }
+});
 
 var encryptionKey = builder.Configuration["Encryption:Key"];
 var encryptionIV = builder.Configuration["Encryption:IV"];
