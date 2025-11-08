@@ -1,0 +1,25 @@
+name: Keep Render API Alive
+
+# Runs every 5 minutes
+on:
+  schedule:
+    - cron: "*/12 * * * *"
+
+# Optional: allow manual trigger too
+# echo "Pinging Render API..."
+# curl -s -o /dev/null -w "%{http_code}\n" https://wsf-app-service.onrender.com/api/health
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Render App
+        run: |
+          echo "Pinging Render API to keep it awake..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://wsf-app-service.onrender.com/api/health)
+          if [ "$RESPONSE" -eq 200 ]; then
+            echo "✅ API is healthy and awake."
+          else
+            echo "⚠️ API health check failed with status $RESPONSE"
+          fi
