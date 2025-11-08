@@ -181,11 +181,10 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontendClients", policy =>
     {
-        policy.SetIsOriginAllowed(origin =>
-        {
-            var uri = new Uri(origin);
-            return uri.Host == "localhost" || uri.Host == "10.245.85.115";
-        })
+        policy.WithOrigins(
+            "http://localhost:3000",
+            "https://invoice-app-ohs6.vercel.app/"
+        )
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
