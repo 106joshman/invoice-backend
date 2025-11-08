@@ -183,13 +183,17 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(
             "http://localhost:3000",
-            "https://invoice-app-ohs6.vercel.app/"
+            "https://invoice-app-ohs6.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
     });
 });
+
+// CONFIGURE PORT FOR RENDER
+var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
+builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 // JWT ENCRYPTION
 static string EnsureJwtKey(IConfiguration configuration)
@@ -255,7 +259,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("AllowFrontendClients");
-app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseAuthentication();
 app.UseAuthorization();
