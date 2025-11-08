@@ -75,7 +75,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
             var database = uri.AbsolutePath.TrimStart('/');
 
             // Use default port 5432 if not specified
-            var port = uri.Port > 0 ? uri.Port : 5432;
+            var port = uri.Port > 0 ? uri.Port : 8080;
 
             connectionString =
                 $"Host={uri.Host};" +
