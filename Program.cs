@@ -92,6 +92,18 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
             throw;
         }
     }
+    else
+    {
+        // Fall back to local config (appsettings.json)
+        connectionString = builder.Configuration.GetConnectionString("DefaultConnection") ?? throw new InvalidOperationException("No database connection string found");
+
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            throw new InvalidOperationException("No database connection string found. Please set DATABASE_URL or configure DefaultConnection.");
+        }
+    }
+
+    options.UseNpgsql(connectionString);
 });
 
 var encryptionKey = builder.Configuration["Encryption:Key"];
