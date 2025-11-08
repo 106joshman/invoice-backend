@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using InvoiceService.DTOs;
 using InvoiceService.Models;
 using InvoiceService.Services;
@@ -14,7 +15,7 @@ public class UserController(UserService userService) : ControllerBase
 
     [HttpGet("profile/{userId}")]
     [Authorize]
-    public async Task<ActionResult<UserResponseDto>> GetUserProfile(Guid userId)
+    public async Task<ActionResult> GetUserProfile(Guid userId)
     {
         try
         {
@@ -24,6 +25,44 @@ public class UserController(UserService userService) : ControllerBase
         catch (Exception ex)
         {
             return StatusCode(500, new { message = ex.Message });
+        }
+    }
+
+    // UPDATE USER PROFLE
+    [HttpPut("update-profile")]
+    [Authorize]
+    public async Task<ActionResult> UpdateProfile([FromBody] UserUpdateDto updateDto)
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentUserRole = User.FindFirstValue(ClaimTypes.Role) ?? "User";
+
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid or missing user identity." });
+
+            var userGuid = Guid.Parse(currentUserId);
+
+            var updatedProfile = await _userService.UpdateUserAsync(userGuid, updateDto);
+
+            return Ok(new
+                {
+                    message = "Profile updated successfully",
+                    data = updatedProfile
+                });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            // 404 ERROR
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -61,6 +100,29 @@ public class UserController(UserService userService) : ControllerBase
         {
             Console.WriteLine($"Error fetching users: {ex.Message}");
             return StatusCode(500, new { message = "An error occurred while fetching admins." });
+        }
+    }
+
+    [HttpPost("change-password/{userId}")]
+    [Authorize]
+    public async Task<IActionResult> ChangePassword(Guid userId, [FromBody] ChangePasswordDto changePasswordDto)
+    {
+        try
+        {
+            // VERIFY USER CHANGING PASSWORD
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (currentUserId != userId.ToString())
+            {
+                return Forbid("CALL THE POLICE NOW!!! You cannot change password for another user.");
+            }
+
+            await _userService.ChangePassword(userId, changePasswordDto);
+            return Ok(new { message = "Password changed successfully" });
+        }
+        catch (Exception ex)
+        {
+        //    Console.WriteLine($"Registration error: {ex.Message}");
+            return BadRequest(ex.Message);
         }
     }
 }

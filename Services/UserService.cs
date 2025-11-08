@@ -29,6 +29,41 @@ public class UserService(ApplicationDbContext context)
         };
     }
 
+    public async Task<UserResponseDto> UpdateUserAsync(Guid userId, UserUpdateDto userUpdateDto)
+    {
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Id == userId) ?? throw new KeyNotFoundException("User not found");
+
+        if (!string.IsNullOrWhiteSpace(userUpdateDto.FullName))
+            user.FullName = userUpdateDto.FullName;
+        if (!string.IsNullOrWhiteSpace(userUpdateDto.Email))
+            user.Email = userUpdateDto.Email;
+        if (!string.IsNullOrWhiteSpace(userUpdateDto.Address))
+            user.Address = userUpdateDto.Address;
+        if (!string.IsNullOrWhiteSpace(userUpdateDto.PhoneNumber))
+            user.PhoneNumber = userUpdateDto.PhoneNumber;
+        if (!string.IsNullOrWhiteSpace(userUpdateDto.CompanyLogo))
+            user.CompanyLogo = userUpdateDto.CompanyLogo;
+
+        _context.Users.Update(user);
+        await _context.SaveChangesAsync();
+
+        return new UserResponseDto
+        {
+            Id = user.Id,
+            Email = user.Email,
+            FullName = user.FullName,
+            PhoneNumber = user.PhoneNumber,
+            Address = user.Address,
+            CompanyLogo = user.CompanyLogo,
+            BusinessName = user.BusinessName,
+            Role = user.Role,
+            SubscriptionPlan = user.SubscriptionPlan,
+            MonthlyInvoiceCount = user.MonthlyInvoiceCount,
+            CreatedAt = user.CreatedAt
+        };
+    }
+
     public async Task<PaginatedResponse<UserResponseDto>> GetAllUsers(PaginationParams paginationParams,
         string? FullName = null,
         string? BusinessName = null,
@@ -130,5 +165,25 @@ public class UserService(ApplicationDbContext context)
             PageSize = paginationParams.PageSize,
             TotalPages = (int)Math.Ceiling(totalCount / (double)paginationParams.PageSize)
         };
+    }
+
+    public async Task ChangePassword(Guid userId, ChangePasswordDto changePasswordDto)
+    {
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Id == userId) ?? throw new Exception("User not found");
+            
+        if (!BCrypt.Net.BCrypt.Verify(changePasswordDto.CurrentPassword, user.Password))
+        {
+            throw new Exception("Current password is incorrect!");
+        }
+
+        if (string.IsNullOrWhiteSpace(changePasswordDto.NewPassword) || changePasswordDto.NewPassword.Length < 8)
+        {
+            throw new Exception("New password must be at least 8 characters long!");
+        }
+
+        user.Password = BCrypt.Net.BCrypt.HashPassword(changePasswordDto.NewPassword, workFactor: 8);
+
+        await _context.SaveChangesAsync();
     }
 }

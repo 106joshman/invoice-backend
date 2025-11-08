@@ -21,6 +21,15 @@ public class UserResponseDto
 public class ChangePasswordDto
 {
     public required string CurrentPassword { get; set; }
-
     public required string NewPassword { get; set; }
+}
+
+public class UserUpdateDto
+{
+    public string FullName { get; set; } = string.Empty;
+    public string Email { get; set; } = string.Empty;
+    public string Address { get; set; } = string.Empty;
+    public string BusinessName { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public string CompanyLogo { get; set; } = string.Empty;
 }
