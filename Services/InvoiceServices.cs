@@ -14,11 +14,11 @@ public class InvoiceServices(ApplicationDbContext context)
         var user = await _context.Users.FindAsync(userId) ?? throw new KeyNotFoundException("user not found");
 
         // ✅ Reset invoice count if new month
-        if (user.LastInvoiceReset == null || user.LastInvoiceReset.Value.Month != DateTime.UtcNow.Month)
-        {
-            user.MonthlyInvoiceCount = 0;
-            user.LastInvoiceReset = DateTime.UtcNow;
-        }
+        // if (user.LastInvoiceReset == null || user.LastInvoiceReset.Value.Month != DateTime.UtcNow.Month)
+        // {
+        //     user.MonthlyInvoiceCount = 0;
+        //     user.LastInvoiceReset = DateTime.UtcNow;
+        // }
 
         // CHECK SUBSCRIPTION LIMIT
         if (user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2)

@@ -142,6 +142,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<InvoiceServices>();
 builder.Services.AddScoped<PaymentService>();
+builder.Services.AddHostedService<MonthlyInvoiceResetService>();
 
 // CONFIGURE JWT AUTHENTICATION
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
