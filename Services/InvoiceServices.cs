@@ -9,23 +9,22 @@ public class InvoiceServices(ApplicationDbContext context)
 {
     private readonly ApplicationDbContext _context = context;
 
-    public async Task<InvoiceResponseDto> CreateInvoice(Guid userId, InvoiceRequestDto invoiceRequestDto)
+    public async Task<InvoiceResponseDto> CreateInvoice(Guid businessId, Guid userId, InvoiceRequestDto invoiceRequestDto)
     {
-        var user = await _context.Users.FindAsync(userId) ?? throw new KeyNotFoundException("user not found");
-
-        // ✅ Reset invoice count if new month
-        // if (user.LastInvoiceReset == null || user.LastInvoiceReset.Value.Month != DateTime.UtcNow.Month)
-        // {
-        //     user.MonthlyInvoiceCount = 0;
-        //     user.LastInvoiceReset = DateTime.UtcNow;
-        // }
+        var business = await _context.Businesses.FindAsync(businessId) ?? throw new KeyNotFoundException("business not found");
 
         // CHECK SUBSCRIPTION LIMIT
-        if (user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2)
+        if (business.SubscriptionPlan == "Free" && business.MonthlyInvoiceCount >= 2)
             throw new InvalidOperationException("Free plan users can only create 2 invoices per month. Please upgrade to continue.");
 
+
+
         var customer = await _context.Customers
-            .FirstOrDefaultAsync(c => c.Id == invoiceRequestDto.CustomerId && c.UserId == userId) ?? throw new UnauthorizedAccessException("Invalid customer details.");
+            .FirstOrDefaultAsync(c =>
+                c.Id == invoiceRequestDto.CustomerId &&
+                c.BusinessId == businessId &&
+                !c.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Invalid customer.");
 
         // ✅ Calculate subtotal, tax, total from backend
         var subtotal = invoiceRequestDto.Items.Sum(i => i.Quantity * i.UnitPrice);
@@ -40,14 +39,16 @@ public class InvoiceServices(ApplicationDbContext context)
             DueDate = invoiceRequestDto.DueDate,
             TaxRate = invoiceRequestDto.TaxRate,
             Discount = invoiceRequestDto.Discount,
-            Notes = invoiceRequestDto.Notes,
-            CustomerId = invoiceRequestDto.CustomerId,
             Subtotal = subtotal,
             TaxAmount = taxAmount,
             Total = total,
+            Notes = invoiceRequestDto.Notes,
+
+            CustomerId = invoiceRequestDto.CustomerId,
             Customer = customer,
-            UserId = userId,
-            User = user,
+            CreatedByUserId = userId,
+            BusinessId = businessId,
+
             // ✅ Add invoice items
             Items = [.. invoiceRequestDto.Items.Select(item => new InvoiceItem
             {
@@ -59,7 +60,17 @@ public class InvoiceServices(ApplicationDbContext context)
         };
 
         _context.Invoices.Add(invoice);
-        user.MonthlyInvoiceCount += 1;
+        business.MonthlyInvoiceCount += 1;
+
+        // 🔐 AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "CREATE",
+            EntityName = "INVOICE",
+            EntityId = invoice.Id,
+            UserId = userId,
+            ChangeBy = userId.ToString()
+        });
         await _context.SaveChangesAsync();
 
         // ✅ Map to response DTO
@@ -77,6 +88,9 @@ public class InvoiceServices(ApplicationDbContext context)
             Total = invoice.Total,
             Notes = invoice.Notes,
             CreatedAt = invoice.CreatedAt,
+            CreatedByUserId = invoice.CreatedByUserId,
+            CreatedBy = invoice.CreatedByUser.Email,
+            BusinessId = invoice.BusinessId,
             Customer = new CustomerResponseDto
             {
                 Id = customer.Id,
@@ -100,10 +114,10 @@ public class InvoiceServices(ApplicationDbContext context)
         return response;
     }
 
-    public async Task<LastInvoiceNumberResponseDto> GetLastInvoiceNumber(Guid userId)
+    public async Task<LastInvoiceNumberResponseDto> GetLastInvoiceNumber(Guid businessId)
     {
         var lastInvoice = await _context.Invoices
-            .Where(i => i.UserId == userId)
+            .Where(i => i.BusinessId == businessId)
             .OrderByDescending(i => i.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -113,7 +127,7 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(Guid userId, PaginationParams paginationParams,
+    public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(Guid businessId, PaginationParams paginationParams,
         string? InvoiceNumber = null,
         string? CustomerName = null,
         string? Status = null)
@@ -121,7 +135,7 @@ public class InvoiceServices(ApplicationDbContext context)
         var query = _context.Invoices
             .Include(i => i.Customer)
             .Include(i => i.Items)
-            .Where(i => i.UserId == userId)
+            .Where(i => i.BusinessId == businessId)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(InvoiceNumber))
@@ -182,25 +196,34 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<InvoiceResponseDto> UpdateInvoice(Guid userId, Guid invoiceId, InvoiceUpdateDto invoiceUpdateDto)
+    public async Task<InvoiceResponseDto> UpdateInvoice(Guid businessId, Guid userId, Guid invoiceId, InvoiceUpdateDto invoiceUpdateDto)
     {
         var invoice = await _context.Invoices
             .Include(i => i.Items)
             .Include(i => i.Customer)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.UserId == userId)
-            ?? throw new UnauthorizedAccessException("Invoice not found or you do not have access to it.");
+            .FirstOrDefaultAsync(i =>
+                i.Id == invoiceId &&
+                i.BusinessId == businessId &&
+                !i.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Invoice not found or access denied.");
 
-        var user = await _context.Users.FindAsync(userId)
+        var business = await _context.Businesses.FindAsync(businessId)
             ?? throw new KeyNotFoundException("User not found.");
 
-        // ✅ Restrict Free users when monthly invoice count is maxed
-        if (user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2)
-            throw new InvalidOperationException("Free plan users cannot edit invoices once the monthly limit is reached. Please upgrade to continue.");
-
         // ✅ Check if Free user has reached their invoice limit
-        bool isFreeUser = user.SubscriptionPlan == "Free" && user.MonthlyInvoiceCount >= 2;
+        bool isFreeLocked =
+            business.SubscriptionPlan == "Free" &&
+            business.MonthlyInvoiceCount >= 2;
 
-        if (isFreeUser)
+        // ✅ Restrict Free users when monthly invoice count is maxed
+        if (isFreeLocked)
+        {
+            throw new InvalidOperationException(
+                "Free plan reached. Upgrade to edit invoices.");
+        }
+
+
+        if (isFreeLocked)
         {
             // 🧾 Allow only non-financial updates
             if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Status))
@@ -212,7 +235,24 @@ public class InvoiceServices(ApplicationDbContext context)
             if (invoiceUpdateDto.DueDate.HasValue)
                 invoice.DueDate = invoiceUpdateDto.DueDate.Value;
 
+            if (invoiceUpdateDto.TaxRate.HasValue)
+                invoice.TaxRate = invoiceUpdateDto.TaxRate.Value;
+
+            if (invoiceUpdateDto.Discount.HasValue)
+                invoice.Discount = invoiceUpdateDto.Discount.Value;
+
             invoice.UpdatedAt = DateTime.UtcNow;
+
+            // 🧾 AUDIT LOG
+            _context.AuditLogs.Add(new AuditLog
+            {
+                Action = "UPDATE",
+                EntityName = "INVOICE",
+                EntityId = invoice.Id,
+                UserId = userId,
+                ChangeBy = userId.ToString()
+            });
+
             await _context.SaveChangesAsync();
 
             return new InvoiceResponseDto
@@ -239,14 +279,14 @@ public class InvoiceServices(ApplicationDbContext context)
                     PhoneNumber = invoice.Customer.PhoneNumber,
                     CreatedAt = invoice.Customer.CreatedAt
                 },
-                Items = invoice.Items.Select(it => new InvoiceItemResponseDto
+                Items = [.. invoice.Items.Select(it => new InvoiceItemResponseDto
                 {
                     Id = it.Id,
                     Description = it.Description,
                     Quantity = it.Quantity,
                     UnitPrice = it.UnitPrice,
                     Amount = it.Amount
-                }).ToList()
+                })]
             };
         }
 
@@ -266,14 +306,14 @@ public class InvoiceServices(ApplicationDbContext context)
             _context.InvoiceItems.RemoveRange(invoice.Items);
 
             // Add new items and recalculate amounts
-            invoice.Items = invoiceUpdateDto.Items.Select(it => new InvoiceItem
+            invoice.Items = [.. invoiceUpdateDto.Items.Select(it => new InvoiceItem
             {
                 Description = it.Description,
                 Quantity = it.Quantity,
                 UnitPrice = it.UnitPrice,
                 Amount = it.Quantity * it.UnitPrice,
                 InvoiceId = invoice.Id
-            }).ToList();
+            })];
         }
 
         // Recalculate financials
@@ -281,6 +321,16 @@ public class InvoiceServices(ApplicationDbContext context)
         invoice.TaxAmount = invoice.Subtotal * (invoice.TaxRate / 100);
         invoice.Total = invoice.Subtotal + invoice.TaxAmount - invoice.Discount;
         invoice.UpdatedAt = DateTime.UtcNow;
+
+        // 🔐 AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "UPDATE",
+            EntityName = "INVOICE",
+            EntityId = invoice.Id,
+            UserId = userId,
+            ChangeBy = userId.ToString()
+        });
 
         await _context.SaveChangesAsync();
 
@@ -320,12 +370,12 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<InvoiceResponseDto> GetSingleInvoiceAsync(Guid userId, Guid invoiceId)
+    public async Task<InvoiceResponseDto> GetSingleInvoiceAsync(Guid businessId, Guid invoiceId)
     {
         var invoice = await _context.Invoices
             .Include(i => i.Customer)
             .Include(i => i.Items)
-            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.UserId == userId)
+            .FirstOrDefaultAsync(i => i.Id == invoiceId && i.BusinessId == businessId)
             ?? throw new KeyNotFoundException("Invoice not found or you don't have permission to view it.");
             return new InvoiceResponseDto
         {
@@ -364,12 +414,48 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task DeleteInvoice(Guid invoiceId, Guid userId)
+    public async Task DeleteInvoice(Guid userId, Guid invoiceId, Guid businessId)
     {
         var invoice = await _context.Invoices
-        .FirstOrDefaultAsync(c => c.Id == invoiceId && c.UserId == userId) ?? throw new UnauthorizedAccessException("Invoice not found or you do not have permission to delete it.");
+        .FirstOrDefaultAsync(c =>
+            c.Id == invoiceId &&
+            c.BusinessId == businessId &&
+            !c.IsDeleted)
+        ?? throw new UnauthorizedAccessException("Invoice not found");
 
-        _context.Invoices.Remove(invoice);
+        // 🔒 Permission check
+        var businessUser = await _context.BusinessUsers
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                bu.BusinessId == businessId &&
+                bu.IsActive)
+            ?? throw new UnauthorizedAccessException("Access denied.");
+
+        if (businessUser.Role == "Member")
+            throw new UnauthorizedAccessException(
+                "Members cannot delete invoices.");
+
+        if (invoice.IsDeleted)
+            return; // already deleted
+
+        invoice.IsDeleted = true;
+        foreach (var item in invoice.Items)
+        {
+            item.IsDeleted = true;
+        }
+        invoice.DeletedAt = DateTime.UtcNow;
+        invoice.UpdatedAt = DateTime.UtcNow;
+
+        // 🧾 AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "DELETE",
+            EntityName = "INVOICE",
+            EntityId = invoice.Id,
+            UserId = userId,
+            ChangeBy = userId.ToString()
+        });
+
         await _context.SaveChangesAsync();
     }
 }

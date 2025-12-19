@@ -9,75 +9,94 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace InvoiceService.Services;
 
-public class AuthService
+public class AuthService(ApplicationDbContext context, IConfiguration configuration)
 {
-    private readonly ApplicationDbContext _context;
-    private readonly IConfiguration _configuration;
+    private readonly ApplicationDbContext _context = context;
+    private readonly IConfiguration _configuration = configuration;
 
-    public AuthService(ApplicationDbContext context, IConfiguration configuration)
-    {
-        _context = context;
-        _configuration = configuration;
-    }
+    // public async Task<AuthResponseDto> Register(CreateUserDto createUserDto)
+    // {
+    //     var emailExists = await _context.Users.AnyAsync(u => u.Email == createUserDto.Email && !u.IsDeleted);
 
-    public async Task<AuthResponseDto> Register(CreateUserDto createUserDto)
-    {
-        if (string.IsNullOrWhiteSpace(createUserDto.Email) || string.IsNullOrWhiteSpace(createUserDto.Password))
-        {
-            throw new Exception("Email and password are required");
-        }
+    //     if (string.IsNullOrWhiteSpace(createUserDto.Email) || string.IsNullOrWhiteSpace(createUserDto.Password))
+    //     {
+    //         throw new Exception("Email and password are required");
+    //     }
 
-        // // CHECK IF EMAIL ALREADY EXISTS
-        if (await _context.Users.AnyAsync(x => x.Email == createUserDto.Email))
-        {
-            throw new UnauthorizedAccessException("Email already exists");
-        }
+    //     // // CHECK IF EMAIL ALREADY EXISTS
+    //     if (emailExists)
+    //     {
+    //         throw new UnauthorizedAccessException("Email already in use.");
+    //     }
 
-        // HASH PASSWORD BEFORE STORING IN DATABASE
-        var passwordHash = BCrypt.Net.BCrypt.HashPassword(createUserDto.Password, workFactor: 10);
+    //     // HASH PASSWORD BEFORE STORING IN DATABASE
+    //     var passwordHash = BCrypt.Net.BCrypt.HashPassword(createUserDto.Password, workFactor: 10);
 
-        // CREATE USER OBJECT BEFOR SENDING TO DATABASE
-        var user = new User
-        {
-            FullName = createUserDto.FullName,
-            Email = createUserDto.Email,
-            Role = "User",
-            Password = passwordHash,
-        };
+    //     // CREATE USER OBJECT BEFOR SENDING TO DATABASE
+    //     var user = new User
+    //     {
+    //         FullName = createUserDto.FullName,
+    //         Email = createUserDto.Email,
+    //         Role = "User",
+    //         Password = passwordHash,
+    //     };
 
-        _context.Users.Add(user);
-        await _context.SaveChangesAsync();
+    //     _context.Users.Add(user);
+    //     await _context.SaveChangesAsync();
 
-        // GENERATE JWT TOKEN
-        var token = GenerateJwtToken(user);
+    //     // GENERATE JWT TOKEN
+    //     var token = GenerateJwtToken(user, businessUser = null);
 
-        return new AuthResponseDto
-        {
-            Token = token,
-            UserId = user.Id,
-            FullName = user.FullName,
-            Email = user.Email,
-            Role = user.Role,
-            CreatedAt = user.CreatedAt
-        };
-    }
+    //     return new AuthResponseDto
+    //     {
+    //         Token = token,
+    //         UserId = user.Id,
+    //         FullName = user.FullName,
+    //         Email = user.Email,
+    //         Role = user.Role,
+    //         BusinessId = user.BusinessId,
+    //         BusinessRole = user.BusinessRole,
+    //         CreatedAt = user.CreatedAt
+    //     };
+    // }
 
     public async Task<AuthResponseDto> Login(UserLoginDto loginDto)
     {
-        // Console.WriteLine($"Received Login request for {loginDto.Email}");
         var user = await _context.Users
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Email.ToLower() == loginDto.Email.ToLower());
+            .FirstOrDefaultAsync(x =>
+                x.Email.ToLower() == loginDto.Email.ToLower() &&
+                !x.IsDeleted)
+            ?? throw new UnauthorizedAccessException("User not found.");
 
-         // CHECK FOR VALID EMAIL AND VERIFY PASSWORD
-        if (user == null || !BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
+        // CHECK IF USER IS ASSIGNED TO AN ACTIVE BUSINESS
+        var businessUser = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == user.Id &&
+                bu.IsActive &&
+                bu.IsVerified &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Access denied.");
+
+        // ❌ CHECK FOR SUSPENDED ACCOUNT
+        if (!businessUser.IsActive)
+            throw new UnauthorizedAccessException("Your account has been suspended.");
+
+        // ❌ CHECK FOR VALID EMAIL AND VERIFY PASSWORD
+        if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
+            throw new UnauthorizedAccessException("Invalid credentials.");
+
+        // ✅ First login → mark verified
+        if (!businessUser.IsVerified)
         {
-            // Console.WriteLine("User not found");
-            throw new Exception("Invalid email or password");
+            businessUser.IsVerified = true;
+            await _context.SaveChangesAsync();
         }
 
         // GENERATE JWT TOKEN
-        var token = GenerateJwtToken(user);
+        var token = GenerateJwtToken(user, businessUser);
 
         return new AuthResponseDto
         {
@@ -86,18 +105,29 @@ public class AuthService
             FullName = user.FullName,
             Email = user.Email,
             Role = user.Role,
+
+            BusinessId = businessUser.BusinessId,
+            BusinessRole = businessUser.Role,
+            IsVerified = businessUser.IsVerified,
+
             CreatedAt = user.CreatedAt
         };
     }
 
-    private string GenerateJwtToken(User user)
+    private string GenerateJwtToken(User user, BusinessUser businessUser)
     {
         var claims = new[]
         {
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(JwtRegisteredClaimNames.Name, $"{user.FullName}"),
             new Claim(JwtRegisteredClaimNames.Email, user.Email),
+
+            // SYSTEM ROLE
             new Claim(ClaimTypes.Role, user.Role),
+
+            // BUSINESS CONTEXT CLAIMS
+            new Claim("BusinessId", businessUser.BusinessId.ToString()),
+            new Claim("BusinessRole", businessUser.Role),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 

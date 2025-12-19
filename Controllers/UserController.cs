@@ -103,18 +103,20 @@ public class UserController(UserService userService) : ControllerBase
         }
     }
 
-    [HttpPost("change-password/{userId}")]
+    [HttpPost("change-password")]
     [Authorize]
-    public async Task<IActionResult> ChangePassword(Guid userId, [FromBody] ChangePasswordDto changePasswordDto)
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordDto changePasswordDto)
     {
         try
         {
             // VERIFY USER CHANGING PASSWORD
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (currentUserId != userId.ToString())
+            if (string.IsNullOrEmpty(currentUserId))
             {
                 return Forbid("CALL THE POLICE NOW!!! You cannot change password for another user.");
             }
+
+            var userId = Guid.Parse(currentUserId);
 
             await _userService.ChangePassword(userId, changePasswordDto);
             return Ok(new { message = "Password changed successfully" });

@@ -31,9 +31,13 @@ namespace InvoiceService.DTOs
     {
         public required string Token { get; set; }
         public Guid UserId { get; set; }
+        public Guid BusinessId { get; set; }
         public required string FullName { get; set; }
         public required string Email { get; set; }
         public required string Role { get; set; }
+        public required string BusinessRole { get; set; }
+        public bool IsVerified { get; set; }
+        public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public string Message { get; set; } = "User created successfully";
     }

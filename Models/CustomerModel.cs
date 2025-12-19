@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceService.Models;
 
-[Index(nameof(Email), IsUnique = true)]
+[Index(nameof(Email), nameof(BusinessId), IsUnique = true)]
 public class Customer
 {
     [Key]
@@ -16,13 +16,14 @@ public class Customer
     public string Address { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string Company { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public bool IsDeleted { get; set; } = false;
 
     // RELATIOSHIP
-    [ForeignKey(nameof(User))]
-    public Guid UserId { get; set; }
-    public User? User { get; set; }
+    [ForeignKey(nameof(Business))]
+    public Guid BusinessId { get; set; }
+    public Business? Business { get; set; }
 
     // NAVIGATION PROPERTY
     public ICollection<Invoice> Invoices { get; set; } = [];
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

@@ -9,9 +9,9 @@ public class CustomerService(ApplicationDbContext context)
 {
     private readonly ApplicationDbContext _context = context;
 
-    public async Task<CustomerResponseDto> CreateCustomer(Guid userId, CustomerCreateDto customerCreateDto)
+    public async Task<CustomerResponseDto> CreateCustomer(Guid businessId, CustomerCreateDto customerCreateDto)
     {
-        var user = await _context.Users.FindAsync(userId) ?? throw new KeyNotFoundException("user not found");
+        var user = await _context.Businesses.FindAsync(businessId) ?? throw new KeyNotFoundException("user not found");
 
         var customer = new Customer
         {
@@ -20,8 +20,8 @@ public class CustomerService(ApplicationDbContext context)
             Address = customerCreateDto.Address,
             PhoneNumber = customerCreateDto.PhoneNumber,
             Company = customerCreateDto.Company,
-            UserId = userId,
-            User = user
+            BusinessId = businessId,
+            // Business = Business
         };
 
         _context.Customers.Add(customer);
@@ -39,10 +39,10 @@ public class CustomerService(ApplicationDbContext context)
         };
     }
 
-    public async Task<CustomerResponseDto> UpdateCustomer(Guid customerId, Guid userId, CustomerCreateDto customerUpdateDto)
+    public async Task<CustomerResponseDto> UpdateCustomer(Guid customerId, Guid businessId, CustomerCreateDto customerUpdateDto)
     {
         var customer = await _context.Customers
-            .Where(c => c.Id == customerId && c.UserId == userId)
+            .Where(c => c.Id == customerId && c.BusinessId == businessId)
             .FirstOrDefaultAsync();
 
         if (customer == null)
@@ -73,14 +73,14 @@ public class CustomerService(ApplicationDbContext context)
         };
     }
 
-    public async Task <PaginatedResponse<CustomerResponseDto>> GetCustomers(Guid userId, PaginationParams paginationParams,
+    public async Task <PaginatedResponse<CustomerResponseDto>> GetCustomers(Guid businessId, PaginationParams paginationParams,
         string? Name = null,
         string? Company = null,
         string? Email = null,
         string? PhoneNumber = null)
     {
         var query = _context.Customers
-            .Where(x => x.UserId == userId)
+            .Where(x => x.BusinessId == businessId)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(Name))
@@ -120,16 +120,15 @@ public class CustomerService(ApplicationDbContext context)
         };
     }
 
-    public async Task DeleteCustomer(Guid customerId, Guid userId)
+    public async Task DeleteCustomer(Guid customerId, Guid businessId)
     {
         var customer = await _context.Customers
         .Include(c => c.Invoices)
-        .FirstOrDefaultAsync(c => c.Id == customerId && c.UserId == userId) ?? throw new KeyNotFoundException("Customer not found");
-
-        if (customer.UserId != userId)
+        .FirstOrDefaultAsync(c => c.Id == customerId && c.BusinessId == businessId) ?? throw new KeyNotFoundException("Customer not found");
+        if (customer.BusinessId != businessId)
             throw new UnauthorizedAccessException("You do not have permission to delete this customer.");
 
-        if (customer.Invoices.Any())
+        if (customer.Invoices.Count != 0)
         throw new InvalidOperationException("Cannot delete customer with existing invoices.");
 
         _context.Customers.Remove(customer);

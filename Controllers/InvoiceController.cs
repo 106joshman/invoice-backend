@@ -20,13 +20,17 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
-            if (string.IsNullOrEmpty(currentUserId))
-                return Unauthorized(new { message = "Invalid or missing identity access." });
+            if (string.IsNullOrEmpty(currentUserId) ||
+                string.IsNullOrEmpty(currentBusinessId))
+                return Unauthorized(new { message = "Invalid authentication context." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            var response = await _invoiceService.CreateInvoice(userId, invoiceRequestDto);
+            var response = await _invoiceService.CreateInvoice(businessId, userId, invoiceRequestDto);
+
             return Ok(new { message = "Invoice created successfully", data = response });
         }
         catch (UnauthorizedAccessException ex)
@@ -104,13 +108,16 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
-            if (string.IsNullOrEmpty(currentUserId))
-                return Unauthorized("User ID not found in token.");
+             if (string.IsNullOrEmpty(currentUserId) ||
+                string.IsNullOrEmpty(currentBusinessId))
+                return Unauthorized(new { message = "Invalid authentication context." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            var updatedInvoice = await _invoiceService.UpdateInvoice(userId, invoiceId, invoiceUpdateDto);
+            var updatedInvoice = await _invoiceService.UpdateInvoice(userId, businessId, invoiceId, invoiceUpdateDto);
 
             return Ok(new
             {
@@ -158,18 +165,20 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
 
     [HttpDelete("{invoiceId}")]
     [Authorize]
-    public async Task<IActionResult> DeleteCustomer(Guid invoiceId)
+    public async Task<IActionResult> DeleteInvoice(Guid invoiceId)
     {
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "Invalid or missing identity access." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            await _invoiceService.DeleteInvoice(invoiceId, userId);
+            await _invoiceService.DeleteInvoice(invoiceId, businessId, userId);
 
             return Ok(new { message = "Invoice deleted successfully." });
 

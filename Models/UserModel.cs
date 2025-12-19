@@ -12,24 +12,17 @@ namespace InvoiceService.Models
         [EmailAddress]
         public required string Email { get; set; }
         public required string Password { get; set; }
-        public required string Role { get; set; } = "User";
-
-        // Optional — for profile update later
-        public string Address { get; set; } = string.Empty;
-        public string BusinessName { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
-        public string CompanyLogo { get; set; } = string.Empty;
 
-        // Subscription control
-        public string SubscriptionPlan { get; set; } = "Free"; // Free, Pro, etc.
-        public int MonthlyInvoiceCount { get; set; } = 0;
-        public PaymentInfo? PaymentInfo { get; set; }
+        // 🔐 SYSTEM-WIDE  ROLE
+        public required string Role { get; set; } = "User";
+        // User | Admin | SuperAdmin
 
-        // Navigation
-        public ICollection<Customer>? Customers { get; set; }
-        public ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
+        public bool IsDeleted { get; set; } = false;
 
-        public DateTime? LastInvoiceReset { get; set; }
+        // NAVIGATION
+        public BusinessUser? BusinessUsers { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     }

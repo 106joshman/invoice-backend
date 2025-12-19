@@ -12,7 +12,7 @@ public class PaymentInfo
     public string PaymentTerms { get; set; } = string.Empty;
 
     // Relationship
-    public Guid UserId { get; set; }
-    public User User { get; set; } = default!;
+    public Guid BusinessId { get; set; }
+    public Business Business { get; set; } = default!;
     public DateTime UpdatedAt { get; internal set; }
 }

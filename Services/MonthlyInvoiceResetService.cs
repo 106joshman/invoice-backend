@@ -24,15 +24,15 @@ public class MonthlyInvoiceResetService(
                     using var scope = _scopeFactory.CreateScope();
                     var context = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
-                    var usersToReset = await context.Users
-                        .Where(u =>
-                            u.SubscriptionPlan == "Free" &&
-                            (u.LastInvoiceReset == null ||
-                             u.LastInvoiceReset.Value.Month != now.Month))
+                    var businessesToReset = await context.Businesses
+                        .Where(b =>
+                            b.SubscriptionPlan == "Free" &&
+                            (b.LastInvoiceReset == null ||
+                             b.LastInvoiceReset.Value.Month != now.Month))
                         .ToListAsync(stoppingToken);
 
                     // ✅ Reset invoice count if new month
-                    foreach (var user in usersToReset)
+                    foreach (var user in businessesToReset)
                     {
                         user.MonthlyInvoiceCount = 0;
                         user.LastInvoiceReset = now;

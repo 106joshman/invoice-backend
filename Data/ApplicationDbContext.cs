@@ -3,12 +3,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceService.Data
 {
-    public class ApplicationDbContext : DbContext
+    public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : DbContext(options)
     {
-        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
-            : base(options)
-        {
-        }
 
         // PREDEFINED DATABASE TABLES STRUCTURE
         public DbSet<User> Users { get; set; }
@@ -16,6 +12,10 @@ namespace InvoiceService.Data
         public DbSet<Invoice> Invoices { get; set; }
         public DbSet<InvoiceItem> InvoiceItems { get; set; }
         public DbSet<PaymentInfo> PaymentInfo { get; set; }
+        public DbSet<Business> Businesses { get; set; }
+        public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<BusinessUser> BusinessUsers { get; set; }
+
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -28,23 +28,32 @@ namespace InvoiceService.Data
 
                 entity.HasIndex(u => u.Email)
                     .IsUnique();
+            });
+
+            // ---------------- BUSINESSES ----------------
+            modelBuilder.Entity<Business>(entity =>
+            {
+                entity.HasKey(b => b.Id);
+
+                entity.HasIndex(b => b.Name)
+                    .IsUnique();
 
                 // 1-TO-1 RELATIONSHIP WITH PAYMENT INFO
                 entity.HasOne(u => u.PaymentInfo)
-                    .WithOne(p => p.User)
-                    .HasForeignKey<PaymentInfo>(p => p.UserId)
+                    .WithOne(p => p.Business)
+                    .HasForeignKey<PaymentInfo>(p => p.BusinessId)
                     .OnDelete(DeleteBehavior.Cascade);
 
-                // 1-TO-1 USER RELATIONSHIP WITH CUSTOMERS
+                // 1-TO-1 BUSINESS RELATIONSHIP WITH CUSTOMERS
                 entity.HasMany(u => u.Customers)
-                    .WithOne(c => c.User)
-                    .HasForeignKey(c => c.UserId)
+                    .WithOne(c => c.Business)
+                    .HasForeignKey(c => c.BusinessId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // 1-TO-MANY USER RELATIONSHIP WITH INVOICES
+                // 1-TO-MANY BUSINESS RELATIONSHIP WITH INVOICES
                 entity.HasMany(u => u.Invoices)
-                    .WithOne(i => i.User)
-                    .HasForeignKey(i => i.UserId)
+                    .WithOne(i => i.Business)
+                    .HasForeignKey(i => i.BusinessId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
 
@@ -57,7 +66,7 @@ namespace InvoiceService.Data
                 .IsRequired()
                 .HasMaxLength(200);
 
-                entity.HasIndex(c => new { c.Email, c.UserId })
+                entity.HasIndex(c => new { c.Email, c.BusinessId })
                 .IsUnique(); // a user can’t duplicate a customer email
             });
 
@@ -73,10 +82,10 @@ namespace InvoiceService.Data
                     .IsRequired()
                     .HasMaxLength(50);
 
-                // Invoice -> User
-                entity.HasOne(i => i.User)
+                // Invoice -> Business
+                entity.HasOne(i => i.Business)
                     .WithMany(u => u.Invoices)
-                    .HasForeignKey(i => i.UserId)
+                    .HasForeignKey(i => i.BusinessId)
                     .OnDelete(DeleteBehavior.Restrict);
 
                 // Invoice -> Customer
@@ -90,6 +99,8 @@ namespace InvoiceService.Data
                     .WithOne(it => it.Invoice)
                     .HasForeignKey(it => it.InvoiceId)
                     .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasQueryFilter(i => !i.IsDeleted);
             });
 
             // ---------------- INVOICE ITEMS ----------------
@@ -100,6 +111,8 @@ namespace InvoiceService.Data
                 entity.Property(it => it.Description)
                 .IsRequired()
                 .HasMaxLength(255);
+
+                entity.HasQueryFilter(it => !it.IsDeleted);
             });
 
             // ---------------- PAYMENT INFO ----------------

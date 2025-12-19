@@ -11,15 +11,15 @@ namespace InvoiceService.Services
         private readonly ApplicationDbContext _context = context;
         private readonly EncryptionHelper _encryptionHelper = encryptionHelper;
 
-        public async Task<PaymentInfoResponseDto> CreateOrUpdatePaymentInfoAsync(Guid userId, PaymentInfoRequestDto dto)
+        public async Task<PaymentInfoResponseDto> CreateOrUpdatePaymentInfoAsync(Guid businessId, PaymentInfoRequestDto dto)
         {
-            // Ensure user exists
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Id == userId)
-                ?? throw new KeyNotFoundException("User not found.");
+            // Ensure business exists
+            var business = await _context.Businesses.FirstOrDefaultAsync(u => u.Id == businessId)
+                ?? throw new KeyNotFoundException("Business not found.");
 
-            // Find existing payment info for user
+            // Find existing payment info for business
             var existingPaymentInfo = await _context.PaymentInfo
-                .FirstOrDefaultAsync(p => p.UserId == userId);
+                .FirstOrDefaultAsync(p => p.BusinessId == businessId);
 
             // Encrypt sensitive data
             var encryptedAccountNumber = _encryptionHelper.Encrypt(dto.AccountNumber);
@@ -29,7 +29,7 @@ namespace InvoiceService.Services
                 // Create new record
                 var newPaymentInfo = new PaymentInfo
                 {
-                    UserId = userId,
+                    BusinessId = businessId,
                     BankName = dto.BankName,
                     AccountName = dto.AccountName,
                     AccountNumber = encryptedAccountNumber,
@@ -62,10 +62,10 @@ namespace InvoiceService.Services
             }
         }
 
-        public async Task<PaymentInfoResponseDto?> GetPaymentInfoAsync(Guid userId)
+        public async Task<PaymentInfoResponseDto?> GetPaymentInfoAsync(Guid businessId)
         {
             var paymentInfo = await _context.PaymentInfo
-                .FirstOrDefaultAsync(p => p.UserId == userId);
+                .FirstOrDefaultAsync(p => p.BusinessId == businessId);
 
             if (paymentInfo == null)
                 return null;

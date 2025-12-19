@@ -55,9 +55,13 @@ public class InvoiceResponseDto
     public decimal Discount { get; set; }
     public decimal Total { get; set; }
     public string Notes { get; set; } = string.Empty;
+    public Guid CreatedByUserId { get; set; }
+    public string CreatedBy { get; set; } = string.Empty;
+
+    public Guid BusinessId { get; set; }
     public DateTime CreatedAt { get; set; }
     public CustomerResponseDto Customer { get; set; } = new();
-    public List<InvoiceItemResponseDto> Items { get; set; } = new();
+    public List<InvoiceItemResponseDto> Items { get; set; } = [];
 }
 
 public class LastInvoiceNumberResponseDto

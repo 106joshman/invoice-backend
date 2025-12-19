@@ -19,12 +19,7 @@ public class UserService(ApplicationDbContext context)
             Email = user.Email,
             FullName = user.FullName,
             PhoneNumber = user.PhoneNumber,
-            Address = user.Address,
-            CompanyLogo = user.CompanyLogo,
-            BusinessName = user.BusinessName,
             Role = user.Role,
-            SubscriptionPlan = user.SubscriptionPlan,
-            MonthlyInvoiceCount = user.MonthlyInvoiceCount,
             CreatedAt = user.CreatedAt
         };
     }
@@ -38,14 +33,8 @@ public class UserService(ApplicationDbContext context)
             user.FullName = userUpdateDto.FullName;
         if (!string.IsNullOrWhiteSpace(userUpdateDto.Email))
             user.Email = userUpdateDto.Email;
-        if (!string.IsNullOrWhiteSpace(userUpdateDto.Address))
-            user.Address = userUpdateDto.Address;
         if (!string.IsNullOrWhiteSpace(userUpdateDto.PhoneNumber))
             user.PhoneNumber = userUpdateDto.PhoneNumber;
-        if (!string.IsNullOrWhiteSpace(userUpdateDto.CompanyLogo))
-            user.CompanyLogo = userUpdateDto.CompanyLogo;
-        if (!string.IsNullOrWhiteSpace(userUpdateDto.BusinessName))
-            user.BusinessName = userUpdateDto.BusinessName;
 
         _context.Users.Update(user);
         await _context.SaveChangesAsync();
@@ -56,19 +45,13 @@ public class UserService(ApplicationDbContext context)
             Email = user.Email,
             FullName = user.FullName,
             PhoneNumber = user.PhoneNumber,
-            Address = user.Address,
-            CompanyLogo = user.CompanyLogo,
-            BusinessName = user.BusinessName,
             Role = user.Role,
-            SubscriptionPlan = user.SubscriptionPlan,
-            MonthlyInvoiceCount = user.MonthlyInvoiceCount,
             CreatedAt = user.CreatedAt
         };
     }
 
     public async Task<PaginatedResponse<UserResponseDto>> GetAllUsers(PaginationParams paginationParams,
         string? FullName = null,
-        string? BusinessName = null,
         string? email = null,
         string? RoleFilter = null)
     {
@@ -77,8 +60,8 @@ public class UserService(ApplicationDbContext context)
         if (!string.IsNullOrWhiteSpace(FullName))
             query = query.Where(u => u.FullName.Contains(FullName));
 
-        if (!string.IsNullOrWhiteSpace(BusinessName))
-            query = query.Where(u => u.BusinessName.Contains(BusinessName));
+        // if (!string.IsNullOrWhiteSpace(BusinessName))
+        //     query = query.Where(u => u.BusinessName.Contains(BusinessName));
 
         if (!string.IsNullOrWhiteSpace(email))
             query = query.Where(u => u.Email.Contains(email));
@@ -98,12 +81,7 @@ public class UserService(ApplicationDbContext context)
                 Email = u.Email,
                 FullName = u.FullName,
                 PhoneNumber = u.PhoneNumber,
-                Address = u.Address,
-                CompanyLogo = u.CompanyLogo,
-                BusinessName = u.BusinessName,
                 Role = u.Role,
-                SubscriptionPlan = u.SubscriptionPlan,
-                MonthlyInvoiceCount = u.MonthlyInvoiceCount,
                 CreatedAt = u.CreatedAt
             })
             .ToListAsync();
@@ -123,7 +101,7 @@ public class UserService(ApplicationDbContext context)
         string? BusinessName = null,
         string? Email = null)
         {
-            return await GetAllUsers(paginationParams, FullName, BusinessName, Email, "User");
+            return await GetAllUsers(paginationParams, FullName, Email, "User");
         }
 
     public async Task<PaginatedResponse<UserResponseDto>> GetAdminsAndSuperAdmins(PaginationParams paginationParams,
@@ -153,7 +131,6 @@ public class UserService(ApplicationDbContext context)
                 Email = u.Email,
                 FullName = u.FullName,
                 PhoneNumber = u.PhoneNumber,
-                Address = u.Address,
                 Role = u.Role,
                 CreatedAt = u.CreatedAt
             })

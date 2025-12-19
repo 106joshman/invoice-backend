@@ -29,11 +29,20 @@ public class Invoice
     public decimal Discount { get; set; }
     public decimal Total { get; set; }
     public string Notes { get; set; } = string.Empty;
+    public bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
 
     // Relationships
-    [ForeignKey(nameof(User))]
-    public Guid UserId { get; set; }
-    public User User { get; set; } = default!;
+    [ForeignKey(nameof(Business))]
+    public Guid BusinessId { get; set; }
+    public Business Business { get; set; } = default!;
+
+    // Audit
+    public Guid CreatedByUserId { get; set; }
+    public User CreatedByUser { get; set; } = default!;
+
+    public Guid? UpdatedByUserId { get; set; }
+    public User? UpdatedByUser { get; set; }
 
     [ForeignKey(nameof(Customer))]
     public Guid CustomerId { get; set; }
