@@ -71,7 +71,7 @@ public class BusinessService (ApplicationDbContext context)
         };
     }
 
-    public async Task<List<BusinessResponseDto>> GetAllBusinessAsync(string requestingUserRole, Guid requestingUserId,
+    public async Task<PaginatedResponse<BusinessResponseDto>> GetAllBusinessAsync(string requestingUserRole, Guid requestingUserId,
     PaginationParams paginationParams,
     string? Name,
     string? SubscriptionPlan)
@@ -103,11 +103,12 @@ public class BusinessService (ApplicationDbContext context)
             query = query.Where(b => b.SubscriptionPlan == SubscriptionPlan);
         }
 
-        query = query
-            .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
-            .Take(paginationParams.PageSize);
+        var totalCount = await query.CountAsync();
 
-        return await query
+        var businessLists = await query
+            .OrderBy(b => b.CreatedAt)
+            .Skip((paginationParams.PageNumber - 1) * paginationParams.PageSize)
+            .Take(paginationParams.PageSize)
             .Select(business => new BusinessResponseDto
             {
                 Id = business.Id,
@@ -121,5 +122,14 @@ public class BusinessService (ApplicationDbContext context)
                 CreatedAt = business.CreatedAt
             })
             .ToListAsync();
+
+        return new PaginatedResponse<BusinessResponseDto>
+        {
+            Items = businessLists,
+            TotalCount = totalCount,
+            PageNumber = paginationParams.PageNumber,
+            PageSize = paginationParams.PageSize,
+            TotalPages = (int)Math.Ceiling(totalCount / (double)paginationParams.PageSize)
+        };
     }
 }
