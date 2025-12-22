@@ -14,6 +14,11 @@ namespace InvoiceService.Models
         public required string Password { get; set; }
         public string PhoneNumber { get; set; } = string.Empty;
 
+        public bool IsTemporaryPassword { get; set; }
+        public DateTime? PasswordChangedAt { get; set; }
+        public DateTime? TempPasswordGeneratedAt { get; set; }
+        public bool CredentialsEmailSent { get; set; }
+
         // 🔐 SYSTEM-WIDE  ROLE
         public required string Role { get; set; } = "User";
         // User | Admin | SuperAdmin

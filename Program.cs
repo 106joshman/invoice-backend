@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using InvoiceService.Data;
+using InvoiceService.DTOs;
 using InvoiceService.Helpers;
 using InvoiceService.Middleware;
 using InvoiceService.Seeders;
@@ -106,6 +107,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 var encryptionKey = builder.Configuration["Encryption:Key"];
 var encryptionIV = builder.Configuration["Encryption:IV"];
 
@@ -142,6 +144,9 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CustomerService>();
 builder.Services.AddScoped<InvoiceServices>();
 builder.Services.AddScoped<PaymentService>();
+builder.Services.AddScoped<EmailService>();
+builder.Services.AddScoped<BusinessService>();
+// builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddHostedService<MonthlyInvoiceResetService>();
 
 // CONFIGURE JWT AUTHENTICATION

@@ -1,64 +1,123 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Linq;
 using InvoiceService.Data;
 using InvoiceService.DTOs;
+using InvoiceService.Helpers;
 using InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 
 namespace InvoiceService.Services;
 
-public class AuthService(ApplicationDbContext context, IConfiguration configuration)
+public class AuthService(ApplicationDbContext context, IConfiguration configuration, EmailService _emailService)
 {
     private readonly ApplicationDbContext _context = context;
     private readonly IConfiguration _configuration = configuration;
+    private readonly EmailService _emailService = _emailService;
 
-    // public async Task<AuthResponseDto> Register(CreateUserDto createUserDto)
-    // {
-    //     var emailExists = await _context.Users.AnyAsync(u => u.Email == createUserDto.Email && !u.IsDeleted);
+    public async Task<BusinessRegistrationResponseDto> RegisterBusinessAsync(
+        BusinessRegistrationRequestDto registrationDto,
+        Guid adminUserId)
+    {
+        var superAdmin = await _context.Users
+            .Where(a =>
+            a.Id == adminUserId &&
+            (a.Role.ToLower() == "super_admin" || a.Role.ToLower() == "Admin"))
+            .FirstOrDefaultAsync()
+        ?? throw new UnauthorizedAccessException("Only admins can create businesses");
 
-    //     if (string.IsNullOrWhiteSpace(createUserDto.Email) || string.IsNullOrWhiteSpace(createUserDto.Password))
-    //     {
-    //         throw new Exception("Email and password are required");
-    //     }
+        // VERIFY IF EMAIL ALREADY EXISTS
+        if (await _context.Users.AnyAsync(u => u.Email == registrationDto.Email))
+            throw new InvalidOperationException("Email already exist.");
 
-    //     // // CHECK IF EMAIL ALREADY EXISTS
-    //     if (emailExists)
-    //     {
-    //         throw new UnauthorizedAccessException("Email already in use.");
-    //     }
+        // CREATING AN ADMIN USER FOR THE BUSINESS,
+        var business = new Business
+        {
+            Name = registrationDto.BusinessName,
+            Address = registrationDto.BusinessAddress,
+            PhoneNumber = registrationDto.PhoneNumber,
+            IsMultiTenant = registrationDto.IsMultiTenant,
+            SubscriptionPlan = "Free",
+        };
 
-    //     // HASH PASSWORD BEFORE STORING IN DATABASE
-    //     var passwordHash = BCrypt.Net.BCrypt.HashPassword(createUserDto.Password, workFactor: 10);
+        _context.Businesses.Add(business);
 
-    //     // CREATE USER OBJECT BEFOR SENDING TO DATABASE
-    //     var user = new User
-    //     {
-    //         FullName = createUserDto.FullName,
-    //         Email = createUserDto.Email,
-    //         Role = "User",
-    //         Password = passwordHash,
-    //     };
+        string tempPassword = PasswordGenerator.GenerateTemporaryPassword();
 
-    //     _context.Users.Add(user);
-    //     await _context.SaveChangesAsync();
+        // CREATE BUSINESS OWNER USER
+        var businessOwner = new User
+        {
+            FullName = registrationDto.FullName,
+            Email = registrationDto.Email,
+            Role = "User",
+            Password = BCrypt.Net.BCrypt.HashPassword(tempPassword, workFactor: 10),
+            IsTemporaryPassword = true,
+            TempPasswordGeneratedAt = DateTime.UtcNow,
+            CredentialsEmailSent = false,
+        };
 
-    //     // GENERATE JWT TOKEN
-    //     var token = GenerateJwtToken(user, businessUser = null);
+        _context.Users.Add(businessOwner);
 
-    //     return new AuthResponseDto
-    //     {
-    //         Token = token,
-    //         UserId = user.Id,
-    //         FullName = user.FullName,
-    //         Email = user.Email,
-    //         Role = user.Role,
-    //         BusinessId = user.BusinessId,
-    //         BusinessRole = user.BusinessRole,
-    //         CreatedAt = user.CreatedAt
-    //     };
-    // }
+        // LINK BUSINESS OWNER TO BUSINESS
+        var businessUser = new BusinessUser
+        {
+            Business = business,
+            User = businessOwner,
+            Role = "Owner",
+            IsVerified = false,
+            IsActive = true,
+        };
+        _context.BusinessUsers.Add(businessUser);
+
+        // AUDIT LOG ENTRY
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "CREATE",
+            EntityName = "BUSINESS",
+            EntityId = business.Id,
+            UserId = adminUserId,
+            ChangeBy = "SYSTEM_ADMIN"
+        });
+
+        await _context.SaveChangesAsync();
+
+        bool emailSent = true;
+
+        try
+        {
+            // SEND TEMPORARY PASSWORD TO BUSINESS OWNER EMAIL
+            await _emailService.SendWelcomeEmailAsync(
+                toEmail: registrationDto.Email,
+                fullName: registrationDto.FullName,
+                businessName: registrationDto.BusinessName,
+                temporaryPassword: tempPassword
+            );
+        }
+        catch (Exception)
+        {
+            emailSent = false;
+        }
+
+        // ✅ RECORD EMAIL STATUS
+        businessOwner.CredentialsEmailSent = emailSent;
+        await _context.SaveChangesAsync();
+
+        return new BusinessRegistrationResponseDto
+        {
+            BusinessId = business.Id,
+            BusinessName = business.Name,
+            BusinessAddress = business.Address,
+            PhoneNumber = business.PhoneNumber,
+            IsMultiTenant = business.IsMultiTenant,
+            FullName = businessOwner.FullName,
+            Email = businessOwner.Email,
+            Message = emailSent
+                ? "Business registered successfully. Credentials sent via email."
+                : "Business registered successfully. Email delivery failed — please resend credentials."
+        };
+    }
 
     public async Task<AuthResponseDto> Login(UserLoginDto loginDto)
     {
@@ -69,6 +128,46 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                 !x.IsDeleted)
             ?? throw new UnauthorizedAccessException("User not found.");
 
+        // ❌ VERIFY PASSWORD
+        if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
+            throw new UnauthorizedAccessException("Invalid credentials.");
+
+        if (user.IsTemporaryPassword &&
+            user.TempPasswordGeneratedAt.HasValue &&
+            user.TempPasswordGeneratedAt.Value.AddHours(24) < DateTime.UtcNow)
+        {
+            throw new Exception("Temporary password has expired. Please request a new one.");
+        }
+
+        // 🔁 FORCE PASSWORD CHANGE
+        if (user.IsTemporaryPassword)
+        {
+            return new AuthResponseDto
+            {
+                RequirePasswordChange = true,
+                UserId = user.Id,
+                Email = user.Email,
+                Message = "Password change required."
+            };
+        }
+
+        if (user.Role == "super_admin" || user.Role == "admin")
+        {
+            // GENERATE JWT TOKEN
+            var token = GenerateSystemJwtToken(user);
+
+            return new AuthResponseDto
+            {
+                Token = token,
+                UserId = user.Id,
+                FullName = user.FullName,
+                Email = user.Email,
+                Role = user.Role,
+                CreatedAt = user.CreatedAt,
+                Message = "Login successful"
+            };
+        }
+
         // CHECK IF USER IS ASSIGNED TO AN ACTIVE BUSINESS
         var businessUser = await _context.BusinessUsers
             .Include(bu => bu.Business)
@@ -78,17 +177,13 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                 bu.IsVerified &&
                 !bu.IsDeleted &&
                 !bu.Business.IsDeleted)
-            ?? throw new UnauthorizedAccessException("Access denied.");
+            ?? throw new UnauthorizedAccessException("Business access denied.");
 
         // ❌ CHECK FOR SUSPENDED ACCOUNT
         if (!businessUser.IsActive)
             throw new UnauthorizedAccessException("Your account has been suspended.");
 
-        // ❌ CHECK FOR VALID EMAIL AND VERIFY PASSWORD
-        if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
-            throw new UnauthorizedAccessException("Invalid credentials.");
-
-        // ✅ First login → mark verified
+        // VERIFY BUSINESS USER ON FIRST SUCCESSFUL LOGIN
         if (!businessUser.IsVerified)
         {
             businessUser.IsVerified = true;
@@ -96,25 +191,93 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         }
 
         // GENERATE JWT TOKEN
-        var token = GenerateJwtToken(user, businessUser);
+        var businessToken = GenerateBusinessJwtToken(user, businessUser);
 
         return new AuthResponseDto
         {
-            Token = token,
+            Token = businessToken,
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
             Role = user.Role,
-
             BusinessId = businessUser.BusinessId,
             BusinessRole = businessUser.Role,
             IsVerified = businessUser.IsVerified,
-
-            CreatedAt = user.CreatedAt
+            CreatedAt = user.CreatedAt,
+            Message = "Login successful"
         };
     }
 
-    private string GenerateJwtToken(User user, BusinessUser businessUser)
+    public async Task ResendBusinessCredentialsAsync(Guid userId)
+    {
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u =>
+            u.Id == userId)
+            ?? throw new Exception("User not found");
+
+        var businessName = await _context.BusinessUsers
+            .Where(bu => bu.UserId == user.Id)
+            .Select(bu => bu.Business.Name)
+            .FirstOrDefaultAsync()
+            ?? throw new Exception("Business not found for the user");
+
+        string newTempPassword = PasswordGenerator.GenerateTemporaryPassword();
+
+        user.Password = BCrypt.Net.BCrypt.HashPassword(newTempPassword);
+        user.IsTemporaryPassword = true;
+        user.TempPasswordGeneratedAt = DateTime.UtcNow;
+
+        bool emailSent = true;
+
+        try
+        {
+            await _emailService.SendWelcomeEmailAsync(
+                user.Email,
+                user.FullName,
+                businessName,
+                newTempPassword
+            );
+        }
+        catch (Exception)
+        {
+            emailSent = false;
+        }
+
+        user.CredentialsEmailSent = emailSent;
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task ForceChangePassword(Guid userId, string newTempPassword)
+    {
+        var user = await _context.Users
+            .FirstOrDefaultAsync(u => u.Id == userId)
+            ?? throw new Exception("User not found");
+
+        user.Password = BCrypt.Net.BCrypt.HashPassword(newTempPassword, workFactor: 8);
+        user.IsTemporaryPassword = false;
+        user.PasswordChangedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+    }
+
+    private string GenerateSystemJwtToken(User user)
+    {
+        var claims = new[]
+        {
+           new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Name, $"{user.FullName}"),
+            new Claim(JwtRegisteredClaimNames.Email, user.Email),
+
+            // SYSTEM ROLE
+            new Claim(ClaimTypes.Role, user.Role),
+            new Claim("Scope", "System"),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        };
+
+        return BuildToken(claims);
+    }
+
+    private string GenerateBusinessJwtToken(User user, BusinessUser businessUser)
     {
         var claims = new[]
         {
@@ -131,9 +294,14 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 
-        var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key is missing");
+        return BuildToken(claims);
+    }
 
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
+    private string BuildToken(IEnumerable<Claim> claims)
+    {
+        var key = new SymmetricSecurityKey(
+            Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)
+        );
 
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha512Signature);
 
@@ -141,9 +309,11 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             issuer: _configuration["Jwt:Issuer"],
             audience: _configuration["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(7), // EXPRES IN 7 DAYS
+            expires: DateTime.UtcNow.AddDays(7),
             signingCredentials: creds
         );
+
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
+
 }
