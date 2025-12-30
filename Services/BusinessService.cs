@@ -66,7 +66,8 @@ public class BusinessService (ApplicationDbContext context)
                     Email = bu.User.Email,
                     Role = bu.Role,
                     IsVerified = bu.IsVerified,
-                    IsActive = bu.IsActive
+                    IsActive = bu.IsActive,
+                    JoinedAt = bu.JoinedAt
                 })]
         };
     }

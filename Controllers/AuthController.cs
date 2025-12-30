@@ -69,19 +69,24 @@ public class AuthController(AuthService authService) : ControllerBase
         }
     }
 
-    [HttpPost("resend-credentials")]
-    public async Task<IActionResult> ResendCredentials(Guid userId)
+    [Authorize(Roles = "super_admin,admin")]
+    [HttpPost("{userId}/resend-credentials")]
+    public async Task<IActionResult> ResendUserCredentials(Guid userId)
     {
         try
         {
-            var superAdminIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(superAdminIdClaim) || !Guid.TryParse(superAdminIdClaim, out Guid superAdminId))
+            var superAdminIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(superAdminIdClaim))
             {
                 return Unauthorized(new { message = "Invalid credentials." });
             }
 
-            await _authService.ResendBusinessCredentialsAsync(userId);
-            return Ok("Credentials resent successfully.");
+            var adminId = Guid.Parse(superAdminIdClaim);
+
+            await _authService.ResendBusinessCredentialsAsync(userId, adminId);
+
+            return Ok(new { message = "Credentials resent successfully."});
         }
         catch (UnauthorizedAccessException ex)
         {

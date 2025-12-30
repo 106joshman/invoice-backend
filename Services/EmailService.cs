@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Options;
 using InvoiceService.DTOs;
 using System.Net.Mail;
 using InvoiceService.Common;
@@ -14,37 +13,41 @@ public class EmailService(IConfiguration configuration)
         string businessName,
         string temporaryPassword)
     {
-        var smtp = new SmtpClient
+        var username = _configuration["EmailSettings:Username"];
+        var password = _configuration["EmailSettings:Password"];
+        var fromEmail = _configuration["EmailSettings:FromEmail"];
+
+        if (string.IsNullOrWhiteSpace(username) ||
+            string.IsNullOrWhiteSpace(password) ||
+            string.IsNullOrWhiteSpace(fromEmail))
         {
-            Host = _configuration["EmailSettings:Host"] ?? "smtp.gmail.com",
-            Port = int.Parse(_configuration["EmailSettings:Port"] ?? "587"),
-            EnableSsl = bool.Parse(_configuration["EmailSettings:EnableSSL"] ?? "true"),
-            Credentials = new System.Net.NetworkCredential(
-                _configuration["EmailSettings:Username"],
-                _configuration["EmailSettings:Password"]),
+            throw new Exception("Email configuration is missing or invalid.");
+        }
+
+        using var smtp = new SmtpClient("smtp.gmail.com", 587)
+        {
+            EnableSsl = true,
+            Credentials = new System.Net.NetworkCredential(username, password),
             DeliveryMethod = SmtpDeliveryMethod.Network,
             Timeout = 20000
         };
 
-        var message = new MailMessage
+        using var message = new MailMessage
         {
-            From = new MailAddress(
-                _configuration["EmailSettings:FromEmail"] ?? "",
-                _configuration["EmailSettings:FromName"]),
+            From = new MailAddress(fromEmail, _configuration["EmailSettings:FromName"]),
             Subject = "Welcome to Alpha Tech Groups X InvoicePro",
-            Body = EmailTemplates.BusinessCredentials(new
-            BusinessCredentialsEmailDto
+            Body = EmailTemplates.BusinessCredentials(new BusinessCredentialsEmailDto
             {
                 ToEmail = toEmail,
                 FullName = fullName,
                 BusinessName = businessName,
                 TemporaryPassword = temporaryPassword
             }),
-
-            IsBodyHtml = true,
+            IsBodyHtml = true
         };
 
         message.To.Add(toEmail);
+
         await smtp.SendMailAsync(message);
     }
 }

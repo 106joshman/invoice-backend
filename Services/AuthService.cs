@@ -208,7 +208,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         };
     }
 
-    public async Task ResendBusinessCredentialsAsync(Guid userId)
+    public async Task ResendBusinessCredentialsAsync(Guid userId, Guid adminId)
     {
         var user = await _context.Users
             .FirstOrDefaultAsync(u =>
@@ -244,6 +244,16 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         }
 
         user.CredentialsEmailSent = emailSent;
+
+        // AUDIT LOG ENTRY
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "RESET_PASSWORD",
+            EntityName = "BUSINESS USER",
+            EntityId = userId,
+            UserId = adminId,
+            ChangeBy = "SYSTEM_ADMIN"
+        });
         await _context.SaveChangesAsync();
     }
 

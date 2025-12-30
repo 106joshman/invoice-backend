@@ -8,9 +8,10 @@ namespace invoiceService.Controllers;
 
 [ApiController]
 [Route("api/[controller]") ]
-public class BusinessController(BusinessService businessService) : ControllerBase
+public class BusinessController(BusinessService businessService, EmailService _emailService) : ControllerBase
 {
     private readonly BusinessService _businessService = businessService;
+    private readonly EmailService _emailService = _emailService;
 
     [HttpGet("{businessId}")]
     [Authorize]
@@ -82,6 +83,20 @@ public class BusinessController(BusinessService businessService) : ControllerBas
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpGet("test-email")]
+    public async Task<IActionResult> TestEmail()
+    {
+        await _emailService.SendWelcomeEmailAsync(
+            "ejembijoshman@gmail.com",
+            "Test User",
+            "Test Business",
+            "Temp123!"
+        );
+
+        return Ok("Email sent");
+    }
+
 
     // public async Task<ActionResult> UpdateBusiness(Guid businessId, [FromBody] BusinessUpdateDto updateDto)
     // {
