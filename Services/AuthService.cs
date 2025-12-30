@@ -142,8 +142,11 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         // 🔁 FORCE PASSWORD CHANGE
         if (user.IsTemporaryPassword)
         {
+            var passwordChangeToken = GeneratePasswordChangeToken(user);
+
             return new AuthResponseDto
             {
+                Token = passwordChangeToken,
                 RequirePasswordChange = true,
                 UserId = user.Id,
                 Email = user.Email,
@@ -257,13 +260,13 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         await _context.SaveChangesAsync();
     }
 
-    public async Task ForceChangePassword(Guid userId, string newTempPassword)
+    public async Task ForceChangePassword(Guid userId, ForceChangePasswordDto forceChangePasswordDto)
     {
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Id == userId)
             ?? throw new Exception("User not found");
 
-        user.Password = BCrypt.Net.BCrypt.HashPassword(newTempPassword, workFactor: 8);
+        user.Password = BCrypt.Net.BCrypt.HashPassword(forceChangePasswordDto.NewPassword, workFactor: 8);
         user.IsTemporaryPassword = false;
         user.PasswordChangedAt = DateTime.UtcNow;
 
@@ -284,7 +287,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 
-        return BuildToken(claims);
+        return BuildToken(claims, expiresInMinutes: 60 * 8); // 8 HOURS
     }
 
     private string GenerateBusinessJwtToken(User user, BusinessUser businessUser)
@@ -304,10 +307,27 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 
-        return BuildToken(claims);
+        return BuildToken(claims, expiresInMinutes: 60 * 24); // 24 HOURS
     }
 
-    private string BuildToken(IEnumerable<Claim> claims)
+    private string GeneratePasswordChangeToken(User user)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
+            new Claim("Scope", "PasswordChange"),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        };
+
+        return BuildToken(
+            claims,
+            expiresInMinutes: 15 // short-lived
+        );
+    }
+
+
+    private string BuildToken(IEnumerable<Claim> claims, int expiresInMinutes)
     {
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]!)
@@ -319,7 +339,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             issuer: _configuration["Jwt:Issuer"],
             audience: _configuration["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddDays(7),
+            expires: DateTime.UtcNow.AddMinutes(expiresInMinutes),
             signingCredentials: creds
         );
 

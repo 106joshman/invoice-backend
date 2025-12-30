@@ -106,7 +106,7 @@ public class AuthController(AuthService authService) : ControllerBase
     }
 
     [HttpPost("force-change-password")]
-    public async Task<IActionResult> ForceChangePassword([FromBody] string newTempPassword)
+    public async Task<IActionResult> ForceChangePassword([FromBody] ForceChangePasswordDto forceChangePasswordDto)
     {
         try
         {
@@ -119,7 +119,7 @@ public class AuthController(AuthService authService) : ControllerBase
 
             var userId = Guid.Parse(currentUserId);
 
-            await _authService.ForceChangePassword(userId, newTempPassword);
+            await _authService.ForceChangePassword(userId, forceChangePasswordDto);
             return Ok(new { message = "New Password generated successfully." });
         }
         catch (UnauthorizedAccessException ex)

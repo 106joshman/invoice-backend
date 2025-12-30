@@ -24,6 +24,11 @@ public class ChangePasswordDto
     public required string NewPassword { get; set; }
 }
 
+public class ForceChangePasswordDto
+{
+    public required string NewPassword { get; set; }
+}
+
 public class UserUpdateDto
 {
     public string FullName { get; set; } = string.Empty;
