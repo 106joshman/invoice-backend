@@ -9,10 +9,74 @@ public class CustomerService(ApplicationDbContext context)
 {
     private readonly ApplicationDbContext _context = context;
 
-    public async Task<CustomerResponseDto> CreateCustomer(Guid businessId, CustomerCreateDto customerCreateDto)
+    public async Task<CustomerResponseDto> CreateCustomer(
+        Guid businessId,
+        Guid userId,
+        CustomerCreateDto customerCreateDto)
     {
-        var user = await _context.Businesses.FindAsync(businessId) ?? throw new KeyNotFoundException("user not found");
+        var businessUser = await _context.BusinessUsers
+        .Include(bu => bu.Business)
+        .FirstOrDefaultAsync(bu =>
+            bu.UserId == userId &&
+            bu.BusinessId == businessId &&
+            bu.IsActive &&
+            !bu.IsDeleted &&
+            !bu.Business.IsDeleted)
+        ?? throw new UnauthorizedAccessException(
+            "You are not authorized to perform this action.");
 
+        // OPTIONAL: ROLE_BASED PERMISSION CHECK
+        if (businessUser.Role != "Owner" && businessUser.Role != "Admin")
+        throw new UnauthorizedAccessException(
+            "You do not have permission to create customers.");
+
+        var existingCustomer = await _context.Customers
+            .Where(c =>
+                c.Email.ToLower() == customerCreateDto.Email &&
+                c.BusinessId == businessId)
+            .FirstOrDefaultAsync();
+
+        if (existingCustomer != null)
+        {
+            // CHECK TO SEE IF ANY NEED TO RESTORE DELETED CUSTOMER AND UPDATE DATA
+            if (existingCustomer.IsDeleted)
+            {
+                existingCustomer.IsDeleted = false;
+                existingCustomer.Name = customerCreateDto.Name;
+                existingCustomer.Address = customerCreateDto.Address;
+                existingCustomer.PhoneNumber = customerCreateDto.PhoneNumber;
+                existingCustomer.Company = customerCreateDto.Company;
+
+                // 🧾 AUDIT LOG
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    Action = "RESTORE",
+                    EntityName = "CUSTOMER",
+                    EntityId = existingCustomer.Id,
+                    UserId = userId,
+                    BusinessId = businessId,
+                    ChangeBy = userId.ToString()
+                });
+
+                await _context.SaveChangesAsync();
+
+                return new CustomerResponseDto
+                {
+                    Id = existingCustomer.Id,
+                    Name = existingCustomer.Name,
+                    Email = existingCustomer.Email,
+                    Company = existingCustomer.Company,
+                    Address = existingCustomer.Address,
+                    PhoneNumber = existingCustomer.PhoneNumber,
+                    CreatedAt = existingCustomer.CreatedAt
+                };
+            }
+
+            // EXIT IF CUSTOMER EXISTS AND IS NOT DELETED
+            throw new InvalidOperationException("A customer with this email already exists.");
+        }
+
+        // CREATE NEW CUSTOMER
         var customer = new Customer
         {
             Name = customerCreateDto.Name,
@@ -21,10 +85,21 @@ public class CustomerService(ApplicationDbContext context)
             PhoneNumber = customerCreateDto.PhoneNumber,
             Company = customerCreateDto.Company,
             BusinessId = businessId,
-            // Business = Business
         };
 
         _context.Customers.Add(customer);
+
+        // 🧾 AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "CREATE",
+            EntityName = "CUSTOMER",
+            EntityId = customer.Id,
+            UserId = userId,
+            BusinessId = businessId,
+            ChangeBy = userId.ToString()
+        });
+
         await _context.SaveChangesAsync();
 
         return new CustomerResponseDto
@@ -39,10 +114,39 @@ public class CustomerService(ApplicationDbContext context)
         };
     }
 
-    public async Task<CustomerResponseDto> UpdateCustomer(Guid customerId, Guid businessId, CustomerCreateDto customerUpdateDto)
+    public async Task<CustomerResponseDto> GetCustomerById(Guid customerId,  Guid businessId)
     {
         var customer = await _context.Customers
-            .Where(c => c.Id == customerId && c.BusinessId == businessId)
+            .Where(c =>
+                c.Id == customerId &&
+                c.BusinessId == businessId &&
+                !c.IsDeleted)
+            .FirstOrDefaultAsync()
+            ?? throw new KeyNotFoundException("Customer not found!");
+
+        return new CustomerResponseDto
+        {
+            Id = customer.Id,
+            Name = customer.Name,
+            Email = customer.Email,
+            Company = customer.Company,
+            Address = customer.Address,
+            PhoneNumber = customer.PhoneNumber,
+            CreatedAt = customer.CreatedAt
+        };
+    }
+
+    public async Task<CustomerResponseDto> UpdateCustomer(
+        Guid customerId,
+        Guid businessId,
+        Guid userId,
+        CustomerCreateDto customerUpdateDto)
+    {
+        var customer = await _context.Customers
+            .Where(c =>
+                c.Id == customerId &&
+                c.BusinessId == businessId &&
+                !c.IsDeleted)
             .FirstOrDefaultAsync();
 
         if (customer == null)
@@ -59,6 +163,17 @@ public class CustomerService(ApplicationDbContext context)
         if (!string.IsNullOrWhiteSpace(customerUpdateDto.Company))
             customer.Company = customerUpdateDto.Company;
 
+        // 🧾 AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "UPDATE",
+            EntityName = "CUSTOMER",
+            EntityId = customer.Id,
+            UserId = userId,
+            BusinessId = businessId,
+            ChangeBy = userId.ToString()
+        });
+
         await _context.SaveChangesAsync();
 
         return new CustomerResponseDto
@@ -73,14 +188,19 @@ public class CustomerService(ApplicationDbContext context)
         };
     }
 
-    public async Task <PaginatedResponse<CustomerResponseDto>> GetCustomers(Guid businessId, PaginationParams paginationParams,
+    public async Task <PaginatedResponse<CustomerResponseDto>> GetCustomers(
+        Guid businessId,
+        Guid userId,
+        PaginationParams paginationParams,
         string? Name = null,
         string? Company = null,
         string? Email = null,
         string? PhoneNumber = null)
     {
         var query = _context.Customers
-            .Where(x => x.BusinessId == businessId)
+            .Where(x =>
+                x.BusinessId == businessId &&
+                x.IsDeleted == false)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(Name))
@@ -120,18 +240,46 @@ public class CustomerService(ApplicationDbContext context)
         };
     }
 
-    public async Task DeleteCustomer(Guid customerId, Guid businessId)
+    public async Task DeleteCustomer(
+        Guid customerId,
+        Guid userId,
+        Guid businessId)
     {
+        // VERIFY THE LOGGED IN USER BELONGS TO THE BUSINESS AND HAS PERMISSION
+        var businessUser = await _context.BusinessUsers
+            .AsNoTracking()
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                bu.BusinessId == businessId &&
+                bu.IsActive &&
+                !bu.IsDeleted)
+            ?? throw new UnauthorizedAccessException("You do not have permission to perform this action.");
+
+        // GET THE CUSTOMER
         var customer = await _context.Customers
-        .Include(c => c.Invoices)
-        .FirstOrDefaultAsync(c => c.Id == customerId && c.BusinessId == businessId) ?? throw new KeyNotFoundException("Customer not found");
-        if (customer.BusinessId != businessId)
-            throw new UnauthorizedAccessException("You do not have permission to delete this customer.");
+            .Include(c => c.Invoices)
+            .FirstOrDefaultAsync(c =>
+            c.Id == customerId &&
+            c.BusinessId == businessId &&
+            !c.IsDeleted)
+            ?? throw new KeyNotFoundException("Customer not found");
 
         if (customer.Invoices.Count != 0)
         throw new InvalidOperationException("Cannot delete customer with existing invoices.");
 
-        _context.Customers.Remove(customer);
+        customer.IsDeleted = true;
+
+        // 🧾 AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "DELETE",
+            EntityName = "CUSTOMER",
+            EntityId = customer.Id,
+            UserId = userId,
+            BusinessId = businessId,
+            ChangeBy = userId.ToString()
+        });
+
         await _context.SaveChangesAsync();
     }
 }

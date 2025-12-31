@@ -122,6 +122,29 @@ namespace InvoiceService.Data
 
                 entity.HasIndex(p => p.AccountNumber);
             });
+
+            // ---------------- AUDIT LOGS ----------------
+            modelBuilder.Entity<AuditLog>(entity =>
+            {
+                entity.HasKey(a => a.Id);
+
+                entity.Property(a => a.Action)
+                .IsRequired()
+                .HasMaxLength(100);
+
+                entity.Property(a => a.EntityName)
+                .IsRequired()
+                .HasMaxLength(100);
+
+                entity.HasOne(a => a.User)
+                    .WithMany()
+                    .HasForeignKey(a => a.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(a => a.BusinessId);
+
+                entity.HasIndex(a => a.Timestamp);
+            });
         }
     }
 }

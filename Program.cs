@@ -146,7 +146,7 @@ builder.Services.AddScoped<InvoiceServices>();
 builder.Services.AddScoped<PaymentService>();
 builder.Services.AddScoped<EmailService>();
 builder.Services.AddScoped<BusinessService>();
-// builder.Services.AddScoped<AuditLogService>();
+builder.Services.AddScoped<AuditLogService>();
 builder.Services.AddHostedService<MonthlyInvoiceResetService>();
 
 // CONFIGURE JWT AUTHENTICATION

@@ -50,14 +50,14 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
     {
         try
         {
-            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
-            if (string.IsNullOrEmpty(currentUserId))
+            if (string.IsNullOrEmpty(currentBusinessId))
                 return Unauthorized(new { message = "Invalid or missing identity access." });
 
-            var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            var response = await _invoiceService.GetLastInvoiceNumber(userId);
+            var response = await _invoiceService.GetLastInvoiceNumber(businessId);
 
             return Ok(new
             {
@@ -81,14 +81,21 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "Invalid or missing user identity." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
             var response = await _invoiceService.GetAllInvoice(
-                userId, paginationParams, InvoiceNumber, CustomerName, Status);
+                userId,
+                businessId,
+                paginationParams,
+                InvoiceNumber,
+                CustomerName,
+                Status);
 
             return Ok(response);
         }
@@ -117,7 +124,11 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
             var userId = Guid.Parse(currentUserId);
             var businessId = Guid.Parse(currentBusinessId!);
 
-            var updatedInvoice = await _invoiceService.UpdateInvoice(userId, businessId, invoiceId, invoiceUpdateDto);
+            var updatedInvoice = await _invoiceService.UpdateInvoice(
+                businessId,
+                userId,
+                invoiceId,
+                invoiceUpdateDto);
 
             return Ok(new
             {
@@ -141,17 +152,58 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
+
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "Invalid or missing identity access." });
 
             var userId = Guid.Parse(currentUserId);
-            var response = await _invoiceService.GetSingleInvoiceAsync(userId, invoiceId);
+            var businessId = Guid.Parse(currentBusinessId!);
+
+            var response = await _invoiceService.GetSingleInvoiceAsync(
+                businessId,
+                userId,
+                invoiceId);
 
             return Ok(new { message = "Invoice retrieved successfully", response });
         }
         catch (KeyNotFoundException ex)
         {
             return NotFound(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpGet("stats")]
+    public async Task<IActionResult> GetInvoiceStats()
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var businessId = User.FindFirstValue("BusinessId");
+
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid or missing identity access." });
+
+            var userId = Guid.Parse(currentUserId);
+            var businessGuid = Guid.Parse(businessId!);
+
+            var response = await _invoiceService.GetInvoiceStatistics(
+                businessGuid,
+                userId);
+
+            return Ok(new
+            {
+                message = "Invoice statistics retrieved successfully",
+                data = response
+            });
         }
         catch (UnauthorizedAccessException ex)
         {

@@ -1,13 +1,15 @@
 using InvoiceService.Data;
 using InvoiceService.DTOs;
+using InvoiceService.Helpers;
 using InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceService.Services;
 
-public class BusinessService (ApplicationDbContext context)
+public class BusinessService (ApplicationDbContext context, EncryptionHelper encryptionHelper)
 {
     private readonly ApplicationDbContext _context = context;
+    private readonly EncryptionHelper _encryptionHelper = encryptionHelper;
 
     // BUSINESS LOGIC HERE
     private async Task<bool> HasAccessToBusinessAsync(Guid userId, string role, Guid businessId)
@@ -52,10 +54,26 @@ public class BusinessService (ApplicationDbContext context)
             Email = business.Email,
             PhoneNumber = business.PhoneNumber,
             SubscriptionPlan = business.SubscriptionPlan,
+            MonthlyInvoiceCount = business.MonthlyInvoiceCount,
             IsMultiTenant = business.IsMultiTenant,
             BrandColor = business.BrandColor,
             CompanyLogoUrl = business.CompanyLogoUrl,
             CreatedAt = business.CreatedAt,
+            PaymentInfo = await _context.PaymentInfo
+                .AsNoTracking()
+                .Where(p => p.BusinessId == business.Id)
+                .Select(p => new PaymentInfoResponseDto
+                {
+                    Id = p.Id,
+                    BankName = p.BankName,
+                    AccountName = p.AccountName,
+                    AccountNumber = _encryptionHelper.Decrypt(p.AccountNumber),
+                    RoutingNumber = p.RoutingNumber,
+                    SwiftCode = p.SwiftCode,
+                    IBAN = p.IBAN,
+                    PaymentTerms = p.PaymentTerms
+                })
+                .FirstOrDefaultAsync(),
 
             TeamMembers = [.. business.BusinessUsers
                 .Where(bu => !bu.IsDeleted)
@@ -72,10 +90,12 @@ public class BusinessService (ApplicationDbContext context)
         };
     }
 
-    public async Task<PaginatedResponse<BusinessResponseDto>> GetAllBusinessAsync(string requestingUserRole, Guid requestingUserId,
-    PaginationParams paginationParams,
-    string? Name,
-    string? SubscriptionPlan)
+    public async Task<PaginatedResponse<BusinessResponseDto>> GetAllBusinessAsync(
+        string requestingUserRole,
+        Guid requestingUserId,
+        PaginationParams paginationParams,
+        string? Name,
+        string? SubscriptionPlan)
     {
         var requester = await _context.Users
         .AsNoTracking()

@@ -69,6 +69,7 @@ public class InvoiceServices(ApplicationDbContext context)
             EntityName = "INVOICE",
             EntityId = invoice.Id,
             UserId = userId,
+            BusinessId = businessId,
             ChangeBy = userId.ToString()
         });
         await _context.SaveChangesAsync();
@@ -117,7 +118,8 @@ public class InvoiceServices(ApplicationDbContext context)
     public async Task<LastInvoiceNumberResponseDto> GetLastInvoiceNumber(Guid businessId)
     {
         var lastInvoice = await _context.Invoices
-            .Where(i => i.BusinessId == businessId)
+            .Where(i =>
+                i.BusinessId == businessId)
             .OrderByDescending(i => i.CreatedAt)
             .FirstOrDefaultAsync();
 
@@ -127,15 +129,30 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(Guid businessId, PaginationParams paginationParams,
+    public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(
+        Guid userId,
+        Guid businessId,
+        PaginationParams paginationParams,
         string? InvoiceNumber = null,
         string? CustomerName = null,
         string? Status = null)
     {
+        var businessUser = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                bu.BusinessId == businessId &&
+                bu.IsActive &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted)
+            ?? throw new KeyNotFoundException("User not found.");
+
         var query = _context.Invoices
             .Include(i => i.Customer)
             .Include(i => i.Items)
-            .Where(i => i.BusinessId == businessId)
+            .Where(i =>
+                i.BusinessId == businessId &&
+                !i.IsDeleted)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(InvoiceNumber))
@@ -196,7 +213,11 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<InvoiceResponseDto> UpdateInvoice(Guid businessId, Guid userId, Guid invoiceId, InvoiceUpdateDto invoiceUpdateDto)
+    public async Task<InvoiceResponseDto> UpdateInvoice(
+        Guid businessId,
+        Guid userId,
+        Guid invoiceId,
+        InvoiceUpdateDto invoiceUpdateDto)
     {
         var invoice = await _context.Invoices
             .Include(i => i.Items)
@@ -250,6 +271,7 @@ public class InvoiceServices(ApplicationDbContext context)
                 EntityName = "INVOICE",
                 EntityId = invoice.Id,
                 UserId = userId,
+                BusinessId = businessId,
                 ChangeBy = userId.ToString()
             });
 
@@ -329,6 +351,7 @@ public class InvoiceServices(ApplicationDbContext context)
             EntityName = "INVOICE",
             EntityId = invoice.Id,
             UserId = userId,
+            BusinessId = businessId,
             ChangeBy = userId.ToString()
         });
 
@@ -370,13 +393,27 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<InvoiceResponseDto> GetSingleInvoiceAsync(Guid businessId, Guid invoiceId)
+    public async Task<InvoiceResponseDto> GetSingleInvoiceAsync(
+        Guid businessId,
+        Guid userId,
+        Guid invoiceId)
     {
+        var businessUser = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                bu.BusinessId == businessId &&
+                bu.IsActive &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted)
+            ?? throw new KeyNotFoundException("User not found.");
+
         var invoice = await _context.Invoices
             .Include(i => i.Customer)
             .Include(i => i.Items)
             .FirstOrDefaultAsync(i => i.Id == invoiceId && i.BusinessId == businessId)
             ?? throw new KeyNotFoundException("Invoice not found or you don't have permission to view it.");
+
             return new InvoiceResponseDto
         {
             Id = invoice.Id,
@@ -413,6 +450,55 @@ public class InvoiceServices(ApplicationDbContext context)
             })]
         };
     }
+
+    public async Task<BusinessInvoiceStatsDto> GetInvoiceStatistics(
+        Guid businessId,
+        Guid userId)
+    {
+        var businessUser = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                bu.BusinessId == businessId &&
+                bu.IsActive &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Access denied.");
+
+        var invoices = _context.Invoices
+            .AsNoTracking()
+            .Where(i => i.BusinessId == businessId &&
+            !i.IsDeleted);
+
+        return new BusinessInvoiceStatsDto
+        {
+            BusinessId =businessId,
+
+            TotalInvoices = await invoices.CountAsync(),
+
+            TotalBilled = await invoices
+                .Where(i => i.Status != "draft" &&
+                            i.Status != "cancelled")
+                .SumAsync(i => i.Total),
+
+            TotalPaid = await invoices
+                .Where(i => i.Status == "paid")
+                .SumAsync(i => i.Total),
+
+            TotalOutstanding = await invoices
+                .Where(i => i.Status == "sent" ||
+                            i.Status == "overdue")
+                .SumAsync(i => i.Total),
+
+            TotalOverdue = await invoices
+                .Where(i => i.Status == "overdue")
+                .SumAsync(i => i.Total),
+
+            DraftCount = await invoices
+                .CountAsync(i => i.Status == "draft")
+        };
+    }
+
 
     public async Task DeleteInvoice(Guid userId, Guid invoiceId, Guid businessId)
     {
@@ -453,6 +539,7 @@ public class InvoiceServices(ApplicationDbContext context)
             EntityName = "INVOICE",
             EntityId = invoice.Id,
             UserId = userId,
+            BusinessId = businessId,
             ChangeBy = userId.ToString()
         });
 

@@ -19,12 +19,18 @@ public class PaymentController(PaymentService paymentService) : ControllerBase
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
+
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "Invalid or missing identity access." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            var response = await _paymentService.CreateOrUpdatePaymentInfoAsync(userId, paymentInfoDto);
+            var response = await _paymentService.CreateOrUpdatePaymentInfoAsync(
+                businessId,
+                userId,
+                paymentInfoDto);
 
             return Ok(new
             {

@@ -11,15 +11,30 @@ namespace InvoiceService.Services
         private readonly ApplicationDbContext _context = context;
         private readonly EncryptionHelper _encryptionHelper = encryptionHelper;
 
-        public async Task<PaymentInfoResponseDto> CreateOrUpdatePaymentInfoAsync(Guid businessId, PaymentInfoRequestDto dto)
+        public async Task<PaymentInfoResponseDto> CreateOrUpdatePaymentInfoAsync(
+            Guid businessId,
+            Guid userId,
+            PaymentInfoRequestDto dto)
         {
-            // Ensure business exists
-            var business = await _context.Businesses.FirstOrDefaultAsync(u => u.Id == businessId)
+            var businessUser = await _context.BusinessUsers
+                .Include(bu => bu.Business)
+                .FirstOrDefaultAsync(bu =>
+                    bu.UserId == userId &&
+                    bu.BusinessId == businessId &&
+                    bu.IsActive &&
+                    !bu.IsDeleted &&
+                    !bu.Business.IsDeleted)
                 ?? throw new KeyNotFoundException("Business not found.");
 
-            // Find existing payment info for business
+            if (businessUser.Role != "Owner" && businessUser.Role != "Admin")
+            throw new UnauthorizedAccessException(
+                "You do not have permission to manage payment information.");
+
+
+            // FIND EXISTING PAYMENT INFORMATION FOR BUSINESS
             var existingPaymentInfo = await _context.PaymentInfo
-                .FirstOrDefaultAsync(p => p.BusinessId == businessId);
+                .FirstOrDefaultAsync(p =>
+                    p.BusinessId == businessId);
 
             // Encrypt sensitive data
             var encryptedAccountNumber = _encryptionHelper.Encrypt(dto.AccountNumber);
@@ -40,13 +55,24 @@ namespace InvoiceService.Services
                 };
 
                 _context.PaymentInfo.Add(newPaymentInfo);
+
+                _context.AuditLogs.Add(new AuditLog
+                    {
+                        Action = "CREATE",
+                        EntityName = "PAYMENT_INFO",
+                        EntityId = newPaymentInfo.Id,
+                        UserId = userId,
+                        BusinessId = businessId,
+                        ChangeBy = userId.ToString()
+                    });
+
                 await _context.SaveChangesAsync();
 
                 return MapToResponse(newPaymentInfo, dto.AccountNumber);
             }
             else
             {
-                // Update existing record
+                // UPDATE EXISTING RECORD
                 existingPaymentInfo.BankName = dto.BankName;
                 existingPaymentInfo.AccountName = dto.AccountName;
                 existingPaymentInfo.AccountNumber = encryptedAccountNumber;
@@ -56,6 +82,17 @@ namespace InvoiceService.Services
                 existingPaymentInfo.PaymentTerms = dto.PaymentTerms;
 
                 _context.PaymentInfo.Update(existingPaymentInfo);
+
+                _context.AuditLogs.Add(new AuditLog
+                {
+                    Action = "UPDATE",
+                    EntityName = "PAYMENT_INFO",
+                    EntityId = existingPaymentInfo.Id,
+                    UserId = userId,
+                    BusinessId = businessId,
+                    ChangeBy = userId.ToString()
+                });
+
                 await _context.SaveChangesAsync();
 
                 return MapToResponse(existingPaymentInfo, dto.AccountNumber);

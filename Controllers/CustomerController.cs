@@ -20,14 +20,23 @@ public class CustomerController(CustomerService customerService) : ControllerBas
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "Invalid or missing identity access." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            var response = await _customerService.CreateCustomer(userId, customerCreateDto);
-            return Ok(new { message = "Customer created successfully", data = response });
+            var response = await _customerService.CreateCustomer(
+                businessId,
+                userId,
+                customerCreateDto);
+            return Ok(new
+            {
+                message = "Customer created successfully",
+                data = response
+            });
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -41,21 +50,59 @@ public class CustomerController(CustomerService customerService) : ControllerBas
         }
     }
 
+    [HttpGet("{customerId}")]
+    public async Task<IActionResult> GetCustomerById(Guid customerId)
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
+
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid user identity." });
+
+            var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
+
+            var response = await _customerService.GetCustomerById(customerId, businessId);
+
+            return Ok(response);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
     [HttpPut("{customerId}")]
     public async Task<IActionResult> UpdateCustomer(Guid customerId, [FromBody] CustomerCreateDto customerUpdateDto)
     {
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized("User ID not found in token.");
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-            var updatedCustomer = await _customerService.UpdateCustomer(customerId, userId, customerUpdateDto);
+            var updatedCustomer = await _customerService.UpdateCustomer(
+                customerId,
+                businessId,
+                userId,
+                customerUpdateDto);
 
-            return Ok(new { message = "Customer updated successfully", data = updatedCustomer });
+            return Ok(new
+            {
+                message = "Customer updated successfully",
+                data = updatedCustomer
+            });
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -82,14 +129,22 @@ public class CustomerController(CustomerService customerService) : ControllerBas
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
             if (string.IsNullOrEmpty(currentUserId))
-                return Unauthorized(new { message = "Invalid or missing user identity." });
+                return Unauthorized(new { message = "Invalid user identity." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
             var response = await _customerService.GetCustomers(
-                userId, paginationParams, Name, Company, Email, PhoneNumber);
+                businessId,
+                userId,
+                paginationParams,
+                Name,
+                Company,
+                Email,
+                PhoneNumber);
 
             return Ok(response);
         }
@@ -106,13 +161,18 @@ public class CustomerController(CustomerService customerService) : ControllerBas
         try
         {
             var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentBusinessId = User.FindFirstValue("BusinessId");
 
             if (string.IsNullOrEmpty(currentUserId))
                 return Unauthorized(new { message = "Invalid or missing identity access." });
 
             var userId = Guid.Parse(currentUserId);
+            var businessId = Guid.Parse(currentBusinessId!);
 
-        await _customerService.DeleteCustomer(customerId, userId);
+        await _customerService.DeleteCustomer(
+            customerId,
+            userId,
+            businessId);
 
         return Ok(new { message = "Customer deleted successfully." });
 

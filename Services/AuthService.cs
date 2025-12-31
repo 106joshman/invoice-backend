@@ -39,6 +39,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             Address = registrationDto.BusinessAddress,
             PhoneNumber = registrationDto.PhoneNumber,
             IsMultiTenant = registrationDto.IsMultiTenant,
+            Email = registrationDto.BusinessEmail,
             SubscriptionPlan = "Free",
         };
 
@@ -89,10 +90,10 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         {
             // SEND TEMPORARY PASSWORD TO BUSINESS OWNER EMAIL
             await _emailService.SendWelcomeEmailAsync(
-                toEmail: registrationDto.Email,
-                fullName: registrationDto.FullName,
-                businessName: registrationDto.BusinessName,
-                temporaryPassword: tempPassword
+                 registrationDto.Email,
+                 registrationDto.FullName,
+                 registrationDto.BusinessName,
+                 tempPassword
             );
         }
         catch (Exception)
@@ -177,7 +178,6 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             .FirstOrDefaultAsync(bu =>
                 bu.UserId == user.Id &&
                 bu.IsActive &&
-                bu.IsVerified &&
                 !bu.IsDeleted &&
                 !bu.Business.IsDeleted)
             ?? throw new UnauthorizedAccessException("Business access denied.");
@@ -205,6 +205,8 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             Role = user.Role,
             BusinessId = businessUser.BusinessId,
             BusinessRole = businessUser.Role,
+            IsActive = businessUser.IsActive,
+            RequirePasswordChange = false,
             IsVerified = businessUser.IsVerified,
             CreatedAt = user.CreatedAt,
             Message = "Login successful"
