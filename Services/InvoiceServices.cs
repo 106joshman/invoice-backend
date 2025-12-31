@@ -129,7 +129,48 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
-    public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(
+    public async Task<List<InvoiceResponseDto>> GetOutstandingInvoicesAsync(
+        Guid businessId)
+    {
+        var outstandingStatuses = new[] { "Draft", "Sent", "Overdue" };
+
+        var invoices = await _context.Invoices
+            .AsNoTracking()
+            .Where(i =>
+                i.BusinessId == businessId &&
+                !i.IsDeleted &&
+                 outstandingStatuses.Contains(i.Status))
+            .Select(i => new InvoiceResponseDto
+            {
+                Id = i.Id,
+                InvoiceNumber = i.InvoiceNumber,
+                Status = i.Status,
+                IssueDate = i.IssueDate,
+                DueDate = i.DueDate,
+                Subtotal = i.Subtotal,
+                TaxRate = i.TaxRate,
+                TaxAmount = i.TaxAmount,
+                Discount = i.Discount,
+                Total = i.Total,
+                Notes = i.Notes,
+                CreatedAt = i.CreatedAt,
+                Customer = new CustomerResponseDto
+                {
+                    Id = i.Customer.Id,
+                    Name = i.Customer.Name,
+                    Email = i.Customer.Email,
+                    Company = i.Customer.Company,
+                    Address = i.Customer.Address,
+                    PhoneNumber = i.Customer.PhoneNumber,
+                    CreatedAt = i.Customer.CreatedAt
+                },
+            })
+            .ToListAsync();
+
+        return invoices;
+    }
+
+        public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(
         Guid userId,
         Guid businessId,
         PaginationParams paginationParams,

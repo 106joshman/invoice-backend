@@ -109,6 +109,36 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         }
     }
 
+    [HttpGet("outstanding-invoices")]
+    public async Task<IActionResult> GetOutstandingInvoices()
+    {
+        try
+        {
+            var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var businessIdClaim = User.FindFirstValue("BusinessId");
+
+            if (string.IsNullOrEmpty(businessIdClaim))
+                return Unauthorized(new { message = "Business identity not found." });
+
+            if (string.IsNullOrEmpty(userIdClaim))
+                return Unauthorized(new { message = "User not found." });
+
+            var businessId = Guid.Parse(businessIdClaim);
+
+            var invoices = await _invoiceService.GetOutstandingInvoicesAsync(businessId);
+            return Ok(new
+            {
+                message = "Outstanding invoices fetched successfully",
+                data = invoices
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+
     [HttpPut("update/{invoiceId}")]
     public async Task<IActionResult> UpdateInvoice(Guid invoiceId, [FromBody] InvoiceUpdateDto invoiceUpdateDto)
     {
