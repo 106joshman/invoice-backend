@@ -1,13 +1,15 @@
 using InvoiceService.Data;
 using InvoiceService.DTOs;
+using InvoiceService.Helpers;
 using InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceService.Services;
 
-public class UserService(ApplicationDbContext context)
+public class UserService(ApplicationDbContext context, EmailService _emailService)
 {
     private readonly ApplicationDbContext _context = context;
+    private readonly EmailService _emailService = _emailService;
 
     public async Task<UserResponseDto> GetUserProfile(Guid userId)
     {

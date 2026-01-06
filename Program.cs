@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.RateLimiting;
 using InvoiceService.Data;
 using InvoiceService.DTOs;
 using InvoiceService.Helpers;
@@ -188,14 +189,46 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowFrontendClients", policy =>
     {
         policy.WithOrigins(
-            "http://localhost:3000",
             "http://localhost:5173",
-            "https://invoice-app-ohs6.vercel.app"
+            "https://invoice-booking.vercel.app"
         )
         .AllowAnyHeader()
         .AllowAnyMethod()
         .AllowCredentials();
     });
+});
+
+
+
+// CONFIGURE RATE LIMITING
+builder.Services.AddRateLimiter(options =>
+{
+    // REGISTER ENDPOINT -- PREVENT BOT SIGN UPS
+    options.AddPolicy("registerPolicy", ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: partition => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 3, // MAX 3 SIGN UP REQUESTS PER IP PER MINUTE
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            }
+        )
+    );
+
+    // LOGIN ENDPOINT - EXTRA IP-LEVEL PROTECTION
+    options.AddPolicy("loginPolicy", ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: partition => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5, // 10 LOGIN ATTEMPT PER IP PER MINUTE
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            }
+        )
+    );
 });
 
 // CONFIGURE PORT FOR RENDER

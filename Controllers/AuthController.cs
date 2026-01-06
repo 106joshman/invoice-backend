@@ -3,15 +3,18 @@ using InvoiceService.DTOs;
 using InvoiceService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace InvoiceService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(AuthService authService) : ControllerBase
+public class AuthController(AuthService authService, UserService userService) : ControllerBase
 {
     private readonly AuthService _authService = authService;
+    private readonly UserService _userService = userService;
 
+    [EnableRateLimiting("registerPolicy")]
     [HttpPost("register-business")]
     [Authorize(Roles = "super_admin,admin")]
     public async Task<IActionResult> RegisterBusiness([FromBody] BusinessRegistrationRequestDto createBusinessDto)
@@ -44,7 +47,7 @@ public class AuthController(AuthService authService) : ControllerBase
         }
     }
 
-
+    [EnableRateLimiting("loginPolicy")]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] UserLoginDto loginDto)
     {
@@ -56,6 +59,44 @@ public class AuthController(AuthService authService) : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             // 401 ERROR
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            // 404 ERROR
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [Authorize]
+    [HttpPost("invite")]
+    public async Task<IActionResult> InviteBusinessUser([FromBody] InviteBusinessUserDto inviteBusinessUserDto)
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+            if (string.IsNullOrEmpty(currentUserId))
+            {
+                return Forbid("You don't have the jurisdiction to invite this user.");
+            }
+
+            var userId = Guid.Parse(currentUserId);
+
+            await _authService.InviteBusinessUserAsync(userId, inviteBusinessUserDto);
+
+            return Ok(new
+            {
+                message = "User invited successfully",
+
+            });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
             return Unauthorized(new { message = ex.Message });
         }
         catch (KeyNotFoundException ex)
@@ -84,7 +125,9 @@ public class AuthController(AuthService authService) : ControllerBase
 
             var adminId = Guid.Parse(superAdminIdClaim);
 
-            await _authService.ResendBusinessCredentialsAsync(userId, adminId);
+            await _authService.ResendBusinessCredentialsAsync(
+                userId,
+                adminId);
 
             return Ok(new { message = "Credentials resent successfully."});
         }
@@ -105,22 +148,17 @@ public class AuthController(AuthService authService) : ControllerBase
         }
     }
 
-    [HttpPost("force-change-password")]
-    public async Task<IActionResult> ForceChangePassword([FromBody] ForceChangePasswordDto forceChangePasswordDto)
+    [HttpPost("set-password")]
+    public async Task<IActionResult> SetPassword([FromBody] SetPasswordDto dto)
     {
         try
         {
-            // VERIFY USER CHANGING PASSWORD
-            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(currentUserId))
+            await _authService.SetPassword(dto);
+
+            return Ok(new
             {
-                return Forbid("Incorrect credentials.");
-            }
-
-            var userId = Guid.Parse(currentUserId);
-
-            await _authService.ForceChangePassword(userId, forceChangePasswordDto);
-            return Ok(new { message = "New Password generated successfully." });
+                message = "Password set successfully."
+            });
         }
         catch (UnauthorizedAccessException ex)
         {

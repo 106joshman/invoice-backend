@@ -8,6 +8,8 @@ using InvoiceService.Helpers;
 using InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Cryptography;
+using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace InvoiceService.Services;
 
@@ -45,18 +47,13 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         _context.Businesses.Add(business);
 
-        string tempPassword = PasswordGenerator.GenerateTemporaryPassword();
-
         // CREATE BUSINESS OWNER USER
         var businessOwner = new User
         {
             FullName = registrationDto.FullName,
             Email = registrationDto.Email,
             Role = "User",
-            Password = BCrypt.Net.BCrypt.HashPassword(tempPassword, workFactor: 10),
-            IsTemporaryPassword = true,
-            TempPasswordGeneratedAt = DateTime.UtcNow,
-            CredentialsEmailSent = false,
+            IsPasswordSet = false,
         };
 
         _context.Users.Add(businessOwner);
@@ -70,12 +67,13 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             IsVerified = false,
             IsActive = true,
         };
+
         _context.BusinessUsers.Add(businessUser);
 
         // AUDIT LOG ENTRY
         _context.AuditLogs.Add(new AuditLog
         {
-            Action = "CREATE",
+            Action = "CREATE_BUSINESS",
             EntityName = "BUSINESS",
             EntityId = business.Id,
             UserId = adminUserId,
@@ -84,24 +82,9 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         await _context.SaveChangesAsync();
 
-        bool emailSent = true;
+        var emailSent = await SendSetPasswordLinkAsync(businessOwner);
 
-        try
-        {
-            // SEND TEMPORARY PASSWORD TO BUSINESS OWNER EMAIL
-            await _emailService.SendWelcomeEmailAsync(
-                 registrationDto.Email,
-                 registrationDto.FullName,
-                 registrationDto.BusinessName,
-                 tempPassword
-            );
-        }
-        catch (Exception)
-        {
-            emailSent = false;
-        }
-
-        // ✅ RECORD EMAIL STATUS
+        // RECORD EMAIL STATUS
         businessOwner.CredentialsEmailSent = emailSent;
         await _context.SaveChangesAsync();
 
@@ -115,8 +98,8 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             FullName = businessOwner.FullName,
             Email = businessOwner.Email,
             Message = emailSent
-                ? "Business registered successfully. Credentials sent via email."
-                : "Business registered successfully. Email delivery failed — please resend credentials."
+                ? "Business created. Set password link sent."
+                : "Business created. Email failed — resend activitation."
         };
     }
 
@@ -132,28 +115,6 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         // ❌ VERIFY PASSWORD
         if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
             throw new UnauthorizedAccessException("Invalid credentials.");
-
-        if (user.IsTemporaryPassword &&
-            user.TempPasswordGeneratedAt.HasValue &&
-            user.TempPasswordGeneratedAt.Value.AddHours(24) < DateTime.UtcNow)
-        {
-            throw new Exception("Temporary password has expired. Please request a new one.");
-        }
-
-        // 🔁 FORCE PASSWORD CHANGE
-        if (user.IsTemporaryPassword)
-        {
-            var passwordChangeToken = GeneratePasswordChangeToken(user);
-
-            return new AuthResponseDto
-            {
-                Token = passwordChangeToken,
-                RequirePasswordChange = true,
-                UserId = user.Id,
-                Email = user.Email,
-                Message = "Password change required."
-            };
-        }
 
         if (user.Role == "super_admin" || user.Role == "admin")
         {
@@ -213,11 +174,98 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         };
     }
 
-    public async Task ResendBusinessCredentialsAsync(Guid userId, Guid adminId)
+    public async Task InviteBusinessUserAsync(
+        Guid inviterUserId,
+        InviteBusinessUserDto inviteBusinessUserDto)
     {
+        // VERIFY BUSINESS OWNER OR ADMIN FOR EVERY INVITE
+        var inviter = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .Include(bu => bu.User)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == inviterUserId &&
+                bu.IsActive &&
+                !bu.Business.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Access denied");
+
+        if (inviter.Role != "Owner" && inviter.Role != "Admin")
+            throw new UnauthorizedAccessException("Only Onwers Admins can invite users.");
+
+        var business = inviter.Business;
+
+        // 3️⃣ CHECK USER PLAN FOR SEAT LIMIT
+        // int activeUsersCount = await _context.BusinessUsers
+        //     .CountAsync(bu => bu.BusinessId == business.Id && bu.IsActive);
+
+        // int maxSeats = business.SubscriptionPlan switch
+        // {
+        //     "Free" => 1,
+        //     "Pro" => 1,
+        //     "Business" => 5,
+        //     _ => 1
+        // };
+
+        // if (activeUsersCount >= maxSeats)
+        //     throw new InvalidOperationException("User seat limit reached for your plan.");
+
+        // VERIFY IF EMAIL ALREADY EXISTS
+        if (await _context.Users.AnyAsync(u =>
+            u.Email == inviteBusinessUserDto.Email &&
+            !u.IsDeleted))
+            throw new InvalidOperationException("Email already exist.");
+
+        // CREATE BUSINESS TEAM
+        var newUser = new User
+        {
+            FullName = inviteBusinessUserDto.FullName,
+            Email = inviteBusinessUserDto.Email,
+            Role = "User",
+            IsPasswordSet = false,
+            IsDeleted = false
+        };
+
+        _context.Users.Add(newUser);
+
+        var businessUser = new BusinessUser
+        {
+            BusinessId = business.Id,
+            User = newUser,
+            Role = inviteBusinessUserDto.BusinessRole,
+            IsActive = true,
+            IsVerified = false
+        };
+
+        // ✅ LINK USER TO BUSINESS
+        _context.BusinessUsers.Add(businessUser);
+
+        // ✅ AUDIT LOG
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "INVITE",
+            EntityName = "BUSINESS_USER",
+            EntityId = newUser.Id,
+            UserId = inviterUserId,
+            ChangeBy = inviter.UserId.ToString()
+        });
+
+        // 🔐 SAVE CORE DATA FIRST (IMPORTANT)
+        await _context.SaveChangesAsync();
+        var emailSent = await SendSetPasswordLinkAsync(newUser);
+
+        // ✅ RECORD EMAIL STATUS
+        newUser.CredentialsEmailSent = emailSent;
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task ResendBusinessCredentialsAsync(
+        Guid userId,
+        Guid adminId)
+    {
+        await EnforceCredentialResetLimits(adminId, userId);
+
         var user = await _context.Users
-            .FirstOrDefaultAsync(u =>
-            u.Id == userId)
+            .FirstOrDefaultAsync(u => u.Id == userId)
             ?? throw new Exception("User not found");
 
         var businessName = await _context.BusinessUsers
@@ -226,53 +274,94 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             .FirstOrDefaultAsync()
             ?? throw new Exception("Business not found for the user");
 
-        string newTempPassword = PasswordGenerator.GenerateTemporaryPassword();
-
-        user.Password = BCrypt.Net.BCrypt.HashPassword(newTempPassword);
-        user.IsTemporaryPassword = true;
-        user.TempPasswordGeneratedAt = DateTime.UtcNow;
-
-        bool emailSent = true;
-
-        try
-        {
-            await _emailService.SendWelcomeEmailAsync(
-                user.Email,
-                user.FullName,
-                businessName,
-                newTempPassword
-            );
-        }
-        catch (Exception)
-        {
-            emailSent = false;
-        }
+        var emailSent = await SendSetPasswordLinkAsync(user);
 
         user.CredentialsEmailSent = emailSent;
 
         // AUDIT LOG ENTRY
         _context.AuditLogs.Add(new AuditLog
         {
-            Action = "RESET_PASSWORD",
-            EntityName = "BUSINESS USER",
+            Action = "RESET_PASSWORD_LINK",
+            EntityName = "BUSINESS_USER",
             EntityId = userId,
             UserId = adminId,
             ChangeBy = "SYSTEM_ADMIN"
         });
+
         await _context.SaveChangesAsync();
     }
 
-    public async Task ForceChangePassword(Guid userId, ForceChangePasswordDto forceChangePasswordDto)
+    public async Task SetPassword(SetPasswordDto dto)
     {
         var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Id == userId)
+            .FirstOrDefaultAsync(u => u.Id == dto.UserId)
             ?? throw new Exception("User not found");
 
-        user.Password = BCrypt.Net.BCrypt.HashPassword(forceChangePasswordDto.NewPassword, workFactor: 8);
-        user.IsTemporaryPassword = false;
+        // ✅ Validate token existence
+        if (user.PasswordResetTokenHash == null ||
+            user.PasswordResetTokenExpiresAt == null)
+        {
+            throw new UnauthorizedAccessException("Reset token invalid or already used.");
+        }
+
+        if (user.PasswordResetTokenExpiresAt < DateTime.UtcNow)
+            throw new UnauthorizedAccessException("Reset token expired");
+
+        if (!Verify(dto.Token, user.PasswordResetTokenHash!))
+            throw new UnauthorizedAccessException("Invalid reset token");
+
+        user.Password = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword, workFactor: 8);
+        user.IsPasswordSet = true;
         user.PasswordChangedAt = DateTime.UtcNow;
 
+        // INVALIDATE TOKEN
+        user.PasswordResetTokenHash = null;
+        user.PasswordResetTokenExpiresAt = null;
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "SET_PASSWORD",
+            EntityName = "USER",
+            EntityId = user.Id,
+            UserId = user.Id,
+            ChangeBy = user.Id.ToString()
+        });
+
         await _context.SaveChangesAsync();
+    }
+
+    private async Task<bool> SendSetPasswordLinkAsync(User user)
+    {
+        try
+        {
+            var rawToken = GenerateRawToken();
+
+            user.PasswordResetTokenHash = HashToken(rawToken);
+            user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddMinutes(30);
+
+            var link =
+                $"{_configuration["Frontend:BaseUrl"]}/set-password"+
+                $"?userId={user.Id}&token={Uri.EscapeDataString(rawToken)}";
+
+            var businessName = await _context.BusinessUsers
+                .Where(bu => bu.UserId == user.Id)
+                .Select(bu => bu.Business.Name)
+                .FirstOrDefaultAsync() ?? "Your Business";
+
+            await _emailService.SendWelcomeSetPasswordEmailAsync(
+                user.Email,
+                user.FullName,
+                businessName,
+                link
+            );
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Set password email failed: {ex.Message}");
+            return false;
+        }
     }
 
     private string GenerateSystemJwtToken(User user)
@@ -312,22 +401,56 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         return BuildToken(claims, expiresInMinutes: 60 * 24); // 24 HOURS
     }
 
-    private string GeneratePasswordChangeToken(User user)
+    public static string GenerateRawToken()
     {
-        var claims = new[]
-        {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim("Scope", "PasswordChange"),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-        };
-
-        return BuildToken(
-            claims,
-            expiresInMinutes: 15 // short-lived
-        );
+        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
     }
 
+    public static string HashToken(string rawToken)
+    {
+        return BCrypt.Net.BCrypt.HashPassword(rawToken);
+    }
+
+    public static bool Verify(string rawToken, string hash)
+    {
+        return BCrypt.Net.BCrypt.Verify(rawToken, hash);
+    }
+
+    public async Task EnforceCredentialResetLimits(Guid adminId, Guid targetUserId)
+    {
+        var now = DateTime.UtcNow;
+
+        // 1️⃣ Target user limit (3 per 24h)
+        var userResets = await _context.AuditLogs.CountAsync(a =>
+            a.EntityId == targetUserId &&
+            a.Action == "RESEND_PASSWORD" &&
+            a.Timestamp >= now.AddHours(-24));
+
+        if (userResets >= 3)
+            throw new Exception("This user has reached the maximum credential resets today.");
+
+        // 2️⃣ Admin limit (10 per hour)
+        var adminResets = await _context.AuditLogs.CountAsync(a =>
+            a.UserId == adminId &&
+            a.Action == "RESEND_PASSWORD" &&
+            a.Timestamp >= now.AddHours(-1));
+
+        if (adminResets >= 10)
+            throw new Exception("You have reached the maximum reset attempts per hour.");
+
+        // 3️⃣ Cooldown (5 minutes)
+        var lastReset = await _context.AuditLogs
+            .Where(a =>
+                a.UserId == adminId &&
+                a.EntityId == targetUserId &&
+                a.Action == "RESEND_PASSWORD")
+            .OrderByDescending(a => a.Timestamp)
+            .Select(a => a.Timestamp)
+            .FirstOrDefaultAsync();
+
+        if (lastReset != default && lastReset >= now.AddMinutes(-5))
+            throw new Exception("Please wait before sending another reset.");
+    }
 
     private string BuildToken(IEnumerable<Claim> claims, int expiresInMinutes)
     {

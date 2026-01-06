@@ -92,7 +92,7 @@ public class CustomerService(ApplicationDbContext context)
         // 🧾 AUDIT LOG
         _context.AuditLogs.Add(new AuditLog
         {
-            Action = "CREATE",
+            Action = "CREATE_CUSTOMER",
             EntityName = "CUSTOMER",
             EntityId = customer.Id,
             UserId = userId,

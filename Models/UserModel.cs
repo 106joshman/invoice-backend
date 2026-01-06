@@ -11,12 +11,15 @@ namespace InvoiceService.Models
         public required string FullName { get; set; }
         [EmailAddress]
         public required string Email { get; set; }
-        public required string Password { get; set; }
         public string PhoneNumber { get; set; } = string.Empty;
+        public string? Password { get; set; }
 
-        public bool IsTemporaryPassword { get; set; }
+        // ACTIVATION / RESET
+        public string? PasswordResetTokenHash { get; set; }
+        public DateTime? PasswordResetTokenExpiresAt { get; set; }
+
+        public bool IsPasswordSet { get; set; } = false;
         public DateTime? PasswordChangedAt { get; set; }
-        public DateTime? TempPasswordGeneratedAt { get; set; }
         public bool CredentialsEmailSent { get; set; }
 
         // 🔐 SYSTEM-WIDE  ROLE

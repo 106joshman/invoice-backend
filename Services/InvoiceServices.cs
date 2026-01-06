@@ -65,7 +65,7 @@ public class InvoiceServices(ApplicationDbContext context)
         // 🔐 AUDIT LOG
         _context.AuditLogs.Add(new AuditLog
         {
-            Action = "CREATE",
+            Action = "CREATE_INVOICE",
             EntityName = "INVOICE",
             EntityId = invoice.Id,
             UserId = userId,
@@ -132,7 +132,7 @@ public class InvoiceServices(ApplicationDbContext context)
     public async Task<List<InvoiceResponseDto>> GetOutstandingInvoicesAsync(
         Guid businessId)
     {
-        var outstandingStatuses = new[] { "Draft", "Sent", "Overdue" };
+        var outstandingStatuses = new[] { "draft", "sent", "0verdue" };
 
         var invoices = await _context.Invoices
             .AsNoTracking()

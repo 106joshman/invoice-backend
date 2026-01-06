@@ -7,14 +7,14 @@ using Microsoft.AspNetCore.Mvc;
 namespace invoiceService.Controllers;
 
 [ApiController]
-[Route("api/[controller]") ]
+[Route("api/[controller]")]
+[Authorize]
 public class BusinessController(BusinessService businessService, EmailService _emailService) : ControllerBase
 {
     private readonly BusinessService _businessService = businessService;
     private readonly EmailService _emailService = _emailService;
 
     [HttpGet("{businessId}")]
-    [Authorize]
     public async Task<ActionResult> GetBusinessById(Guid businessId)
     {
         try
@@ -87,7 +87,7 @@ public class BusinessController(BusinessService businessService, EmailService _e
     [HttpGet("test-email")]
     public async Task<IActionResult> TestEmail()
     {
-        await _emailService.SendWelcomeEmailAsync(
+        await _emailService.SendWelcomeSetPasswordEmailAsync(
             "ejembijoshman@gmail.com",
             "Test User",
             "Test Business",

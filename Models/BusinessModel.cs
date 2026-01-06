@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceService.Models;
 
- [Index(nameof(Name), IsUnique = true)]
+ [Index(nameof(Name), nameof(Email), IsUnique = true)]
 public class Business
 {
     public Guid Id { get; set; } = Guid.NewGuid();

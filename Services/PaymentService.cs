@@ -58,7 +58,7 @@ namespace InvoiceService.Services
 
                 _context.AuditLogs.Add(new AuditLog
                     {
-                        Action = "CREATE",
+                        Action = "CREATE_PAYMENT_INFO",
                         EntityName = "PAYMENT_INFO",
                         EntityId = newPaymentInfo.Id,
                         UserId = userId,

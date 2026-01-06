@@ -19,9 +19,11 @@ public class ChangePasswordDto
     public required string NewPassword { get; set; }
 }
 
-public class ForceChangePasswordDto
+public class SetPasswordDto
 {
-    public required string NewPassword { get; set; }
+    public Guid UserId { get; set; }
+    public required string Token { get; set; } = default!;
+    public required string NewPassword { get; set; } = default!;
 }
 
 public class UserUpdateDto

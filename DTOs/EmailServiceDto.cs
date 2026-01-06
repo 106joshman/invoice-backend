@@ -5,7 +5,7 @@ public class BusinessCredentialsEmailDto
     public string ToEmail { get; set; } = default!;
     public string FullName { get; set; } = default!;
     public string BusinessName { get; set; } = default!;
-    public string TemporaryPassword { get; set; } = default!;
+    public string Link { get; set; } = default!;
 }
 
 public class EmailSettings

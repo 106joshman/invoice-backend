@@ -4,50 +4,101 @@ using InvoiceService.Common;
 
 namespace InvoiceService.Services;
 
+public enum EmailType
+{
+    welcome,
+    PasswordReset
+}
+
 public class EmailService(IConfiguration configuration)
 {
     private readonly IConfiguration _configuration = configuration;
-    public async Task SendWelcomeEmailAsync(
-        string toEmail,
-        string fullName,
-        string businessName,
-        string temporaryPassword)
+
+    private SmtpClient CreateSmtp()
     {
-        var username = _configuration["EmailSettings:Username"];
-        var password = _configuration["EmailSettings:Password"];
+        return new SmtpClient("smtp.gmail.com", 587)
+        {
+            EnableSsl = true,
+            Credentials = new System.Net.NetworkCredential(
+                _configuration["EmailSettings:Username"],
+                _configuration["EmailSettings:Password"]
+            ),
+            // DeliveryMethod = SmtpDeliveryMethod.Network,
+            Timeout = 20000
+        };
+    }
+
+    public async Task SendEmailAsync(
+        string toEmail,
+        string subject,
+        string htmlBody)
+    {
+        using var smtp = CreateSmtp();
+
         var fromEmail = _configuration["EmailSettings:FromEmail"];
 
-        if (string.IsNullOrWhiteSpace(username) ||
-            string.IsNullOrWhiteSpace(password) ||
-            string.IsNullOrWhiteSpace(fromEmail))
+        if (string.IsNullOrWhiteSpace(fromEmail))
         {
             throw new Exception("Email configuration is missing or invalid.");
         }
 
-        using var smtp = new SmtpClient("smtp.gmail.com", 587)
+        var message = new MailMessage
         {
-            EnableSsl = true,
-            Credentials = new System.Net.NetworkCredential(username, password),
-            DeliveryMethod = SmtpDeliveryMethod.Network,
-            Timeout = 20000
-        };
-
-        using var message = new MailMessage
-        {
-            From = new MailAddress(fromEmail, _configuration["EmailSettings:FromName"]),
-            Subject = "Welcome to Alpha Tech Groups X InvoicePro",
-            Body = EmailTemplates.BusinessCredentials(new BusinessCredentialsEmailDto
-            {
-                ToEmail = toEmail,
-                FullName = fullName,
-                BusinessName = businessName,
-                TemporaryPassword = temporaryPassword
-            }),
+            From = new MailAddress(
+                fromEmail,
+                _configuration["EmailSettings:FromName"]
+            ),
+            Subject = subject,
+            Body = htmlBody,
             IsBodyHtml = true
         };
 
         message.To.Add(toEmail);
 
         await smtp.SendMailAsync(message);
+    }
+
+    public async Task SendWelcomeSetPasswordEmailAsync(
+        string email,
+        string fullName,
+        string businessName,
+        string link)
+    {
+
+        var body = EmailTemplates.BusinessCredentials(
+            new BusinessCredentialsEmailDto
+            {
+                ToEmail = email,
+                FullName = fullName,
+                BusinessName = businessName,
+                Link = link
+            }
+        );
+
+        await SendEmailAsync(
+            email,
+            "Welcome to Alpha Tech Groups X InvoicePro",
+            body
+        );
+    }
+
+    public async Task SendPAsswordResetEmailAsync(
+        string email,
+        string link
+    )
+    {
+        var body = EmailTemplates.PasswordReset(
+            new BusinessCredentialsEmailDto
+            {
+                ToEmail = email,
+                Link = link
+            }
+        );
+
+        await SendEmailAsync(
+            email,
+            "Reset your password",
+            body
+        );
     }
 }
