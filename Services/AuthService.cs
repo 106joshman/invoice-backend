@@ -128,6 +128,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                 FullName = user.FullName,
                 Email = user.Email,
                 Role = user.Role,
+                PhoneNumber = user.PhoneNumber,
                 CreatedAt = user.CreatedAt,
                 Message = "Login successful"
             };
@@ -164,6 +165,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             FullName = user.FullName,
             Email = user.Email,
             Role = user.Role,
+            PhoneNumber = user.PhoneNumber,
             BusinessId = businessUser.BusinessId,
             BusinessRole = businessUser.Role,
             IsActive = businessUser.IsActive,
