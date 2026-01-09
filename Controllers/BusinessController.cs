@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using InvoiceService.DTOs;
 using InvoiceService.Models;
 using InvoiceService.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -51,9 +52,10 @@ public class BusinessController(BusinessService businessService, EmailService _e
 
     [Authorize(Roles = "Admin,super_admin")]
     [HttpGet("all-businesses")]
-    public async Task<IActionResult> GetAllBusinesses([FromQuery] PaginationParams paginationParams,
-    string? Name,
-    string? SubscriptionPlan)
+    public async Task<IActionResult> GetAllBusinesses([FromQuery]
+        PaginationParams paginationParams,
+        string? Name,
+        string? SubscriptionPlan)
     {
         try
         {
@@ -97,7 +99,109 @@ public class BusinessController(BusinessService businessService, EmailService _e
         return Ok("Email sent");
     }
 
+    [HttpGet("team")]
+    [Authorize]
+    public async Task<IActionResult> GetBusinessTeam(
+        [FromQuery]
+        PaginationParams paginationParams,
+        string? search)
+    {
+        try
+        {
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+            var team = await _businessService.GetBusinessTeamAsync(
+                userId,
+                paginationParams,
+                search);
+
+            return Ok(team);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPatch("team/change-role")]
+    [Authorize]
+    public async Task<IActionResult> ChangeBusinessUserStatus(
+        [FromBody]
+        ChangeUserRoleDto dto,
+        Guid businessUserId
+    )
+    {
+        try
+        {
+            var adminUserId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+            await _businessService.ChangeUserRoleAsync(
+                adminUserId,
+                businessUserId,
+                dto.NewRole
+            );
+
+            return Ok(new
+            {
+                message = "User role updated successfully."
+            });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [Authorize]
+    [HttpPatch("team/{businessUserId}/status")]
+    public async Task<IActionResult> ToggleBusinessUserStatus(
+        Guid businessUserId,
+        [FromQuery] bool activate)
+    {
+        try
+        {
+            var adminUserId = Guid.Parse(
+                User.FindFirstValue(ClaimTypes.NameIdentifier)!
+            );
+
+            await _businessService.ToggleBusinessUserStatusAsync(
+                adminUserId,
+                businessUserId,
+                activate
+            );
+
+            return Ok(new
+            {
+                message = activate
+                    ? "User activated successfully."
+                    : "User suspended successfully."
+            });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(ex.Message);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
     // public async Task<ActionResult> UpdateBusiness(Guid businessId, [FromBody] BusinessUpdateDto updateDto)
     // {
     //     try

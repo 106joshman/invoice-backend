@@ -219,6 +219,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         {
             FullName = inviteBusinessUserDto.FullName,
             Email = inviteBusinessUserDto.Email,
+            PhoneNumber = inviteBusinessUserDto.PhoneNumber,
             Role = "User",
             IsPasswordSet = false,
             IsDeleted = false
@@ -264,26 +265,27 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
     {
         await EnforceCredentialResetLimits(adminId, userId);
 
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Id == userId)
-            ?? throw new Exception("User not found");
+        var targetBusinessUser = await _context.BusinessUsers
+            .Include(bu => bu.User)
+            .Include(bu => bu.Business)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted)
+            ?? throw new Exception("Business user not found.");
 
-        var businessName = await _context.BusinessUsers
-            .Where(bu => bu.UserId == user.Id)
-            .Select(bu => bu.Business.Name)
-            .FirstOrDefaultAsync()
-            ?? throw new Exception("Business not found for the user");
+        await EnsureCanResetPassword(adminId, targetBusinessUser);
 
-        var emailSent = await SendSetPasswordLinkAsync(user);
+        var emailSent = await SendSetPasswordLinkAsync(targetBusinessUser.User);
 
-        user.CredentialsEmailSent = emailSent;
+        targetBusinessUser.User.CredentialsEmailSent = emailSent;
 
         // AUDIT LOG ENTRY
         _context.AuditLogs.Add(new AuditLog
         {
             Action = "RESET_PASSWORD_LINK",
             EntityName = "BUSINESS_USER",
-            EntityId = userId,
+            EntityId = targetBusinessUser.UserId,
             UserId = adminId,
             ChangeBy = "SYSTEM_ADMIN"
         });
@@ -340,7 +342,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             user.PasswordResetTokenExpiresAt = DateTime.UtcNow.AddMinutes(30);
 
             var link =
-                $"{_configuration["Frontend:BaseUrl"]}/set-password"+
+                $"{_configuration["Frontend:BaseUrl"]}/auth/set-password"+
                 $"?userId={user.Id}&token={Uri.EscapeDataString(rawToken)}";
 
             var businessName = await _context.BusinessUsers
@@ -403,7 +405,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
     public static string GenerateRawToken()
     {
-        return Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
+        return Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
     }
 
     public static string HashToken(string rawToken)
@@ -450,6 +452,47 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         if (lastReset != default && lastReset >= now.AddMinutes(-5))
             throw new Exception("Please wait before sending another reset.");
+    }
+
+    private async Task EnsureCanResetPassword(
+        Guid adminId,
+        BusinessUser targetBusinessUser)
+    {
+        // 🔐 Load requester
+        var requester = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .Include(bu => bu.User)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == adminId &&
+                bu.IsActive &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted);
+
+        // SYSTEM ADMIN (not tied to business)
+        if (requester == null)
+        {
+            var systemAdmin = await _context.Users.FirstOrDefaultAsync(u =>
+                u.Id == adminId &&
+                (u.Role == "super_admin" || u.Role == "admin"));
+
+            if (systemAdmin == null)
+                throw new UnauthorizedAccessException("Unauthorized action.");
+
+            // ✅ System admin allowed
+            return;
+        }
+
+        // 🔐 Must be same business
+        if (requester.BusinessId != targetBusinessUser.BusinessId)
+            throw new UnauthorizedAccessException("Cross-business access denied.");
+
+        // 🔐 Role check
+        if (requester.Role != "Owner" && requester.Role != "Admin")
+            throw new UnauthorizedAccessException("Only Owners or Admins can reset passwords.");
+
+        // 🔐 Prevent self-reset abuse (optional)
+        if (requester.UserId == targetBusinessUser.UserId)
+            throw new UnauthorizedAccessException("You cannot reset your own password.");
     }
 
     private string BuildToken(IEnumerable<Claim> claims, int expiresInMinutes)

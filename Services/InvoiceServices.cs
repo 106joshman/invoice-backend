@@ -17,8 +17,6 @@ public class InvoiceServices(ApplicationDbContext context)
         if (business.SubscriptionPlan == "Free" && business.MonthlyInvoiceCount >= 2)
             throw new InvalidOperationException("Free plan users can only create 2 invoices per month. Please upgrade to continue.");
 
-
-
         var customer = await _context.Customers
             .FirstOrDefaultAsync(c =>
                 c.Id == invoiceRequestDto.CustomerId &&

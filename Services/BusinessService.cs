@@ -153,4 +153,156 @@ public class BusinessService (ApplicationDbContext context, EncryptionHelper enc
             TotalPages = (int)Math.Ceiling(totalCount / (double)paginationParams.PageSize)
         };
     }
+
+    public async Task<PaginatedResponse<BusinessTeamMemberDto>> GetBusinessTeamAsync(
+        Guid requesterUserId,
+        PaginationParams paginationParams,
+        string? search)
+    {
+        // Verify requester
+        var requester = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .Include(bu => bu.User)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == requesterUserId &&
+                bu.IsActive &&
+                !bu.Business.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Access denied.");
+
+        if (requester.Role != "Owner" && requester.Role != "Admin")
+            throw new UnauthorizedAccessException("Insufficient permission.");
+
+        var query = _context.BusinessUsers
+            .AsNoTracking()
+            .Include(bu => bu.User)
+            .Where(bu =>
+                bu.BusinessId == requester.BusinessId &&
+                !bu.IsDeleted);
+
+        if (!string.IsNullOrEmpty(search))
+        {
+            search = search.Trim().ToLower();
+
+            query = query.Where(bu =>
+                bu.User.FullName.Contains(search) ||
+                bu.User.Email.ToLower().Contains(search));
+        }
+
+        var totalCount= await query.CountAsync();
+
+        var items = await query
+            .OrderBy(bu => bu.User.FullName)
+            .Skip((paginationParams.PageNumber -1) * paginationParams.PageSize)
+            .Take(paginationParams.PageSize)
+            .Select(bu => new BusinessTeamMemberDto
+            {
+                BusinessUserId = bu.Id,
+                UserId = bu.UserId,
+                FullName = bu.User.FullName,
+                Email = bu.User.Email,
+                Role = bu.Role,
+                IsActive = bu.IsActive,
+                IsVerified = bu.IsVerified,
+                CreatedAt = bu.User.CreatedAt
+            })
+            .ToListAsync();
+
+        return new PaginatedResponse<BusinessTeamMemberDto>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            PageNumber = paginationParams.PageNumber,
+            PageSize = paginationParams.PageSize
+        };
+    }
+
+    public async Task ToggleBusinessUserStatusAsync(
+        Guid adminUserId,
+        Guid targetUserId,
+        bool activate)
+    {
+        var admin = await _context.BusinessUsers
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == adminUserId &&
+                bu.IsActive)
+            ?? throw new UnauthorizedAccessException("Access denied.");
+
+        if (admin.Role != "Owner" && admin.Role != "Admin")
+            throw new UnauthorizedAccessException("Insufficent permission");
+
+        var target = await _context.BusinessUsers
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == targetUserId &&
+                bu.BusinessId == admin.BusinessId)
+            ?? throw new Exception("User not found");
+
+        // 🚫 Prevent self-deactivation
+        if (target.UserId == adminUserId)
+            throw new InvalidOperationException("You cannot modify your own status.");
+
+        if (target.Role == "Owner")
+            throw new Exception("Owner account cannot be suspended.");
+
+        target.IsActive = activate;
+        target.IsVerified = activate;
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = activate ? "ACTIVATE_USER" : "SUSPEND_USER",
+            EntityName = "BUSINESS_USER",
+            EntityId = targetUserId,
+            UserId = adminUserId,
+            ChangeBy = adminUserId.ToString()
+        });
+
+        await _context.SaveChangesAsync();
+    }
+
+    public async Task ChangeUserRoleAsync(
+        Guid adminUserId,
+        Guid targetUserId,
+        string newRole)
+    {
+        var allowedRoles = new[] { "Admin", "Member", "Staff" };
+
+        if (!allowedRoles.Contains(newRole))
+            throw new Exception("Invalid role");
+
+        var admin = await _context.BusinessUsers
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == adminUserId &&
+                bu.Role == "Owner" &&
+                bu.IsActive)
+            ?? throw new UnauthorizedAccessException("Only owners can change roles.");
+
+        var target = await _context.BusinessUsers
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == targetUserId &&
+                bu.BusinessId == admin.BusinessId)
+            ?? throw new Exception("User not found");
+
+        // 🚫 Prevent changing own role
+        if (target.UserId == adminUserId)
+            throw new InvalidOperationException("You cannot change your own role.");
+
+        // 🚫 Prevent role change on owner
+        if (target.Role == "Owner")
+            throw new InvalidOperationException("Owner role cannot be modified.");
+
+        if (target.Role == newRole)
+            throw new InvalidOperationException("User already has this role.");
+
+        target.Role = newRole;
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "CHANGE_ROLE",
+            EntityName = "BUSINESS_USER",
+            EntityId = targetUserId,
+            UserId = adminUserId,
+            ChangeBy = adminUserId.ToString()
+        });
+
+        await _context.SaveChangesAsync();
+    }
 }

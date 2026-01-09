@@ -28,6 +28,31 @@ public class BBusinessMemberDto
     public DateTime JoinedAt { get; set; }
 }
 
+public class BusinessTeamMemberDto
+{
+    public Guid UserId { get; set; }
+    public Guid BusinessUserId { get; set; }
+    public string FullName { get; set; } = default!;
+    public string Email { get; set; } = default!;
+    public string Role { get; set; } = default!;
+    public bool IsActive { get; set; }
+    public bool IsVerified { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class ToggleBusinessUserStatusDto
+{
+    public Guid BusinessUserId { get; set; }
+    public bool IsActive { get; set; }
+}
+
+public class ChangeUserRoleDto
+{
+    public Guid BusinessUserId { get; set; }
+    public string NewRole { get; set; } = default!;
+}
+
+
 public class BusinessInvoiceStatsDto
 {
     public Guid BusinessId { get; set; }
