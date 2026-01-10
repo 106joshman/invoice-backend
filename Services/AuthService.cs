@@ -24,14 +24,16 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         Guid adminUserId)
     {
         var superAdmin = await _context.Users
-            .Where(a =>
+            .FirstOrDefaultAsync(a =>
             a.Id == adminUserId &&
             (a.Role.ToLower() == "super_admin" || a.Role.ToLower() == "Admin"))
-            .FirstOrDefaultAsync()
-        ?? throw new UnauthorizedAccessException("Only admins can create businesses");
+            ?? throw new UnauthorizedAccessException("Only admins can create businesses");
+
+        var normalizedUserEmail = NormalizeEmail(registrationDto.Email);
+        var normalizedBusinessEmail = NormalizeEmail(registrationDto.BusinessEmail);
 
         // VERIFY IF EMAIL ALREADY EXISTS
-        if (await _context.Users.AnyAsync(u => u.Email == registrationDto.Email))
+        if (await _context.Users.AnyAsync(u => u.Email == normalizedUserEmail))
             throw new InvalidOperationException("Email already exist.");
 
         // CREATING AN ADMIN USER FOR THE BUSINESS,
@@ -41,7 +43,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             Address = registrationDto.BusinessAddress,
             PhoneNumber = registrationDto.PhoneNumber,
             IsMultiTenant = registrationDto.IsMultiTenant,
-            Email = registrationDto.BusinessEmail,
+            Email = normalizedBusinessEmail,
             SubscriptionPlan = "Free",
         };
 
@@ -51,7 +53,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         var businessOwner = new User
         {
             FullName = registrationDto.FullName,
-            Email = registrationDto.Email,
+            Email = normalizedUserEmail,
             Role = "User",
             IsPasswordSet = false,
         };
@@ -105,10 +107,11 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
     public async Task<AuthResponseDto> Login(UserLoginDto loginDto)
     {
+        var normalizedUserEmail = NormalizeEmail(loginDto.Email);
         var user = await _context.Users
             .AsNoTracking()
             .FirstOrDefaultAsync(x =>
-                x.Email.ToLower() == loginDto.Email.ToLower() &&
+                x.Email.ToLower() == normalizedUserEmail.ToLower() &&
                 !x.IsDeleted)
             ?? throw new UnauthorizedAccessException("User not found.");
 
@@ -180,6 +183,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         Guid inviterUserId,
         InviteBusinessUserDto inviteBusinessUserDto)
     {
+        var normalizedUserEmail = NormalizeEmail(inviteBusinessUserDto.Email);
         // VERIFY BUSINESS OWNER OR ADMIN FOR EVERY INVITE
         var inviter = await _context.BusinessUsers
             .Include(bu => bu.Business)
@@ -212,7 +216,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         // VERIFY IF EMAIL ALREADY EXISTS
         if (await _context.Users.AnyAsync(u =>
-            u.Email == inviteBusinessUserDto.Email &&
+            u.Email == normalizedUserEmail &&
             !u.IsDeleted))
             throw new InvalidOperationException("Email already exist.");
 
@@ -220,7 +224,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         var newUser = new User
         {
             FullName = inviteBusinessUserDto.FullName,
-            Email = inviteBusinessUserDto.Email,
+            Email = normalizedUserEmail,
             PhoneNumber = inviteBusinessUserDto.PhoneNumber,
             Role = "User",
             IsPasswordSet = false,
@@ -418,6 +422,14 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
     public static bool Verify(string rawToken, string hash)
     {
         return BCrypt.Net.BCrypt.Verify(rawToken, hash);
+    }
+
+    private static string NormalizeEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            throw new ArgumentException("Email is required");
+
+        return email.Trim().ToLowerInvariant();
     }
 
     public async Task EnforceCredentialResetLimits(Guid adminId, Guid targetUserId)
