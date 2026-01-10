@@ -17,7 +17,7 @@ jobs:
       - name: Ping Render App
         run: |
           echo "Pinging RAILWAY API to keep it awake..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://invoice-backend-production-53d2.up.railway.app/api/health)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://invoice-backend-29kf.onrender.com/api/health)
           if [ "$RESPONSE" -eq 200 ]; then
             echo "✅ API is healthy and awake."
           else
