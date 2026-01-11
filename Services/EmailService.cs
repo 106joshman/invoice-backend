@@ -23,7 +23,7 @@ public class EmailService(IConfiguration configuration)
                 _configuration["EmailSettings:Username"],
                 _configuration["EmailSettings:Password"]
             ),
-            // DeliveryMethod = SmtpDeliveryMethod.Network,
+            DeliveryMethod = SmtpDeliveryMethod.Network,
             Timeout = 20000
         };
     }
@@ -53,7 +53,7 @@ public class EmailService(IConfiguration configuration)
             IsBodyHtml = true
         };
 
-        message.To.Add(toEmail);
+        message.To.Add(toEmail.ToLowerInvariant());
 
         await smtp.SendMailAsync(message);
     }
