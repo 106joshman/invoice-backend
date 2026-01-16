@@ -60,6 +60,7 @@ namespace InvoiceService.DTOs
     public class AuthResponseDto
     {
         public string? Token { get; set; }
+        public string? RefreshToken { get; set; }
         public Guid UserId { get; set; }
         public Guid? BusinessId { get; set; }
         public string? FullName { get; set; }

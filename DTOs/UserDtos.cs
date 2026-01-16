@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace InvoiceService.DTOs;
 
 public class UserResponseDto
@@ -34,4 +32,15 @@ public class UserUpdateDto
     public string BusinessName { get; set; } = string.Empty;
     public string PhoneNumber { get; set; } = string.Empty;
     public string CompanyLogo { get; set; } = string.Empty;
+}
+
+public class AuthTokenResponseDto
+{
+    public string AccessToken { get; set; } = null!;
+    public string RefreshToken { get; set; } = null!;
+}
+
+public class RefreshTokenDto
+{
+    public string RefreshToken { get; set; } = default!;
 }

@@ -15,6 +15,7 @@ namespace InvoiceService.Data
         public DbSet<Business> Businesses { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<BusinessUser> BusinessUsers { get; set; }
+        public DbSet<RefreshToken> RefreshTokens { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -144,6 +145,33 @@ namespace InvoiceService.Data
                 entity.HasIndex(a => a.BusinessId);
 
                 entity.HasIndex(a => a.Timestamp);
+            });
+
+            // ---------------- REFRESH TOKENS ----------------
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+
+                entity.Property(e => e.Token)
+                    .IsRequired();
+
+                entity.Property(e => e.UserId)
+                    .IsRequired();
+
+                // Explicitly configure the relationship
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // Ensure the unique index on Token
+                entity.HasIndex(e => e.Token)
+                    .IsUnique();
+
+                // Ignore computed properties
+                entity.Ignore(e => e.IsExpired);
+                entity.Ignore(e => e.IsRevoked);
+                entity.Ignore(e => e.IsActive);
             });
         }
     }

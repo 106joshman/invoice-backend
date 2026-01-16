@@ -109,7 +109,6 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
     {
         var normalizedUserEmail = NormalizeEmail(loginDto.Email);
         var user = await _context.Users
-            .AsNoTracking()
             .FirstOrDefaultAsync(x =>
                 x.Email.ToLower() == normalizedUserEmail.ToLower() &&
                 !x.IsDeleted)
@@ -119,6 +118,22 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         if (!BCrypt.Net.BCrypt.Verify(loginDto.Password, user.Password))
             throw new UnauthorizedAccessException("Invalid credentials.");
 
+        var refreshTokens = GenerateRefreshToken(user.Id);
+
+        _context.RefreshTokens.Add(refreshTokens);
+        await _context.SaveChangesAsync();
+
+        var activeTokens = await _context.RefreshTokens
+            .CountAsync(x =>
+                x.UserId == user.Id &&
+                x.RevokedAt == null &&
+                x.ExpiresAt > DateTime.UtcNow);
+
+        if (activeTokens >= 5)
+        {
+            throw new InvalidOperationException("Too many active sessions");
+        }
+
         if (user.Role == "super_admin" || user.Role == "admin")
         {
             // GENERATE JWT TOKEN
@@ -127,6 +142,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             return new AuthResponseDto
             {
                 Token = token,
+                RefreshToken = refreshTokens.Token,
                 UserId = user.Id,
                 FullName = user.FullName,
                 Email = user.Email,
@@ -155,15 +171,17 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         if (!businessUser.IsVerified)
         {
             businessUser.IsVerified = true;
-            await _context.SaveChangesAsync();
         }
 
         // GENERATE JWT TOKEN
         var businessToken = GenerateBusinessJwtToken(user, businessUser);
 
+        await _context.SaveChangesAsync();
+
         return new AuthResponseDto
         {
             Token = businessToken,
+            RefreshToken = refreshTokens.Token,
             UserId = user.Id,
             FullName = user.FullName,
             Email = user.Email,
@@ -372,6 +390,67 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         }
     }
 
+    public async Task<AuthTokenResponseDto> RefreshTokenAsync(string token)
+    {
+        var refreshToken = await _context.RefreshTokens
+            .Include(x => x.User)
+            .SingleOrDefaultAsync(x => x.Token == token)
+            ?? throw new SecurityTokenException("Invalid refresh token");
+
+        if (refreshToken.RevokedAt != null || refreshToken.ExpiresAt <= DateTime.UtcNow)
+        {
+            await RevokeAllUserTokens(refreshToken.UserId);
+            throw new SecurityTokenException("Refresh token reuse detected");
+        }
+
+        var newRefreshToken = GenerateRefreshToken(refreshToken.UserId);
+
+        refreshToken.RevokedAt = DateTime.UtcNow;
+        refreshToken.ReplacedByToken = newRefreshToken.Token;
+
+        _context.RefreshTokens.Add(newRefreshToken);
+        await _context.SaveChangesAsync();
+
+        string newAccessToken;
+
+        if (refreshToken.User.Role == "super_admin" || refreshToken.User.Role == "admin")
+        {
+            newAccessToken = GenerateSystemJwtToken(refreshToken.User);
+        }
+        else if (refreshToken.User.Role == "User")
+        {
+            var businessUser = await _context.BusinessUsers
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == refreshToken.UserId &&
+                bu.IsActive &&
+                !bu.IsDeleted)
+            ?? throw new SecurityTokenException("Business user context not found");
+
+            newAccessToken = GenerateBusinessJwtToken(refreshToken.User, businessUser);
+        }
+        else
+        {
+            throw new SecurityTokenException("Invalid user role");
+        }
+
+        return new AuthTokenResponseDto
+        {
+            AccessToken = newAccessToken,
+            RefreshToken = newRefreshToken.Token
+        };
+    }
+
+    public async Task LogoutAsync(string refreshToken)
+    {
+        var token = await _context.RefreshTokens
+            .SingleOrDefaultAsync(x => x.Token == refreshToken);
+
+        if (token == null) return;
+
+        token.RevokedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+    }
+
     private string GenerateSystemJwtToken(User user)
     {
         var claims = new[]
@@ -406,7 +485,20 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
         };
 
-        return BuildToken(claims, expiresInMinutes: 60 * 24); // 24 HOURS
+        return BuildToken(claims, expiresInMinutes: 60 * 4); // 4 HOURS
+    }
+
+    private static RefreshToken GenerateRefreshToken(Guid userId)
+    {
+        var randomBytes = RandomNumberGenerator.GetBytes(32);
+
+        return new RefreshToken
+        {
+            Token = Convert.ToHexString(randomBytes),
+            CreatedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddDays(7),
+            UserId = userId
+        };
     }
 
     public static string GenerateRawToken()
@@ -509,6 +601,21 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             throw new UnauthorizedAccessException("You cannot reset your own password.");
     }
 
+    private async Task RevokeAllUserTokens(Guid userId)
+    {
+        var tokens = await _context.RefreshTokens
+            .Where(x =>
+                x.UserId == userId &&
+                x.RevokedAt == null &&
+                x.ExpiresAt > DateTime.UtcNow)
+            .ToListAsync();
+
+        foreach (var token in tokens)
+            token.RevokedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+    }
+
     private string BuildToken(IEnumerable<Claim> claims, int expiresInMinutes)
     {
         var key = new SymmetricSecurityKey(
@@ -527,5 +634,4 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
-
 }

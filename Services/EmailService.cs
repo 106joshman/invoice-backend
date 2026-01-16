@@ -16,7 +16,7 @@ public class EmailService(IConfiguration configuration)
 
     private SmtpClient CreateSmtp()
     {
-        return new SmtpClient("smtp.gmail.com", 587)
+        return new SmtpClient("smtp-relay.brevo.com", 587)
         {
             EnableSsl = true,
             Credentials = new System.Net.NetworkCredential(

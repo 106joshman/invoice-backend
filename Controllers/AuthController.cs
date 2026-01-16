@@ -4,6 +4,7 @@ using InvoiceService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.IdentityModel.Tokens;
 
 namespace InvoiceService.Controllers;
 
@@ -173,6 +174,63 @@ public class AuthController(AuthService authService, UserService userService) : 
         catch (Exception ex)
         {
             return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpPost("refresh")]
+    [AllowAnonymous] // Refresh doesn't require authorization
+    public async Task<IActionResult> RefreshToken([FromBody] RefreshTokenDto dto)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(dto.RefreshToken))
+            {
+                return BadRequest(new { message = "Refresh token is required" });
+            }
+
+            var result = await _authService.RefreshTokenAsync(dto.RefreshToken);
+
+            return Ok(new
+            {
+                message = "Token refreshed successfully",
+                data = result
+            });
+        }
+        catch (SecurityTokenException ex)
+        {
+            // Invalid or reused refresh token
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            // Log the error here
+            return StatusCode(500, new { message = "An error occurred while refreshing the token" });
+        }
+    }
+
+    [Authorize]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout([FromBody] RefreshTokenDto dto)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(dto.RefreshToken))
+            {
+                return BadRequest(new { message = "Refresh token is required" });
+            }
+
+            await _authService.LogoutAsync(dto.RefreshToken);
+
+            return Ok(new { message = "Logged out successfully" });
+        }
+        catch (Exception)
+        {
+            // Log the error here
+            return StatusCode(500, new { message = "An error occurred during logout" });
         }
     }
 }
