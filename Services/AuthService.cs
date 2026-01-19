@@ -386,6 +386,10 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         catch (Exception ex)
         {
             Console.WriteLine($"Set password email failed: {ex.Message}");
+            Console.WriteLine("❌ SMTP ERROR");
+            Console.WriteLine($"StatusCode: {ex}");
+            Console.WriteLine(ex.Message);
+            Console.WriteLine(ex.InnerException?.Message);
             return false;
         }
     }

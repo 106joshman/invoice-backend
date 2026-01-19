@@ -16,9 +16,13 @@ public class EmailService(IConfiguration configuration)
 
     private SmtpClient CreateSmtp()
     {
-        return new SmtpClient("smtp-relay.brevo.com", 587)
+        var host = _configuration["EmailSettings:Host"] ?? "smtp-relay.brevo.com";
+        var port = int.Parse(_configuration["EmailSettings:Port"] ?? "587");
+
+        return new SmtpClient(host, port)
         {
             EnableSsl = true,
+            UseDefaultCredentials = false,
             Credentials = new System.Net.NetworkCredential(
                 _configuration["EmailSettings:Username"],
                 _configuration["EmailSettings:Password"]
@@ -54,6 +58,12 @@ public class EmailService(IConfiguration configuration)
         };
 
         message.To.Add(toEmail.ToLowerInvariant());
+        Console.WriteLine("📧 Sending email:");
+        Console.WriteLine($"To: {toEmail}");
+        Console.WriteLine($"From: {fromEmail}");
+        Console.WriteLine($"Subject: Set Password");
+        Console.WriteLine($"Body: {htmlBody}");
+
 
         await smtp.SendMailAsync(message);
     }
