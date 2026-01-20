@@ -88,13 +88,9 @@ public class AuthController(AuthService authService, UserService userService) : 
 
             var userId = Guid.Parse(currentUserId);
 
-            await _authService.InviteBusinessUserAsync(userId, inviteBusinessUserDto);
+            var response = await _authService.InviteBusinessUserAsync(userId, inviteBusinessUserDto);
 
-            return Ok(new
-            {
-                message = "User invited successfully",
-
-            });
+            return Ok(response);
         }
         catch (UnauthorizedAccessException ex)
         {

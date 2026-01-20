@@ -197,7 +197,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         };
     }
 
-    public async Task InviteBusinessUserAsync(
+    public async Task<InviteBusinessUserDto> InviteBusinessUserAsync(
         Guid inviterUserId,
         InviteBusinessUserDto inviteBusinessUserDto)
     {
@@ -281,6 +281,17 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         newUser.CredentialsEmailSent = emailSent;
 
         await _context.SaveChangesAsync();
+
+        return new InviteBusinessUserDto
+        {
+            FullName = newUser.FullName,
+            Email = newUser.Email,
+            BusinessRole = inviteBusinessUserDto.BusinessRole,
+            PhoneNumber = newUser.PhoneNumber,
+            Message = emailSent
+                ? "User invited successfully. Set password link sent."
+                : "User invited successfully. Email failed — resend activitation."
+        };
     }
 
     public async Task ResendBusinessCredentialsAsync(
@@ -385,11 +396,11 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Set password email failed: {ex.Message}");
-            Console.WriteLine("❌ SMTP ERROR");
-            Console.WriteLine($"StatusCode: {ex}");
+            // Console.WriteLine($"Set password email failed: {ex.Message}");
+            // Console.WriteLine("❌ SMTP ERROR");
+            // Console.WriteLine($"StatusCode: {ex}");
             Console.WriteLine(ex.Message);
-            Console.WriteLine(ex.InnerException?.Message);
+            // Console.WriteLine(ex.InnerException?.Message);
             return false;
         }
     }
