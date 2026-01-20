@@ -129,10 +129,10 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                 x.RevokedAt == null &&
                 x.ExpiresAt > DateTime.UtcNow);
 
-        if (activeTokens >= 5)
-        {
-            throw new InvalidOperationException("Too many active sessions");
-        }
+        // if (activeTokens >= 5)
+        // {
+        //     throw new InvalidOperationException("Too many active sessions");
+        // }
 
         if (user.Role == "super_admin" || user.Role == "admin")
         {
