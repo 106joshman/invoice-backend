@@ -3,11 +3,8 @@ name: Keep RAILWAY API Alive
 # Runs every 4 minutes
 on:
   schedule:
-    - cron: "*/4 * * * *"
+    - cron: "*/10 * * * *" # every 10 minutes
 
-  # Optional: allow manual trigger too
-  # echo "Pinging Render API..."
-  # curl -s -o /dev/null -w "%{http_code}\n" https://invoice-backend-production-53d2.up.railway.app/api/health
   workflow_dispatch:
 
 jobs:
@@ -17,7 +14,7 @@ jobs:
       - name: Ping Render App
         run: |
           echo "Pinging RAILWAY API to keep it awake..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://invoice-backend-29kf.onrender.com/api/health)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 https://invoice-backend-29kf.onrender.com/api/health)
           if [ "$RESPONSE" -eq 200 ]; then
             echo "✅ API is healthy and awake."
           else

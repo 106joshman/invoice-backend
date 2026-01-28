@@ -13,7 +13,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = Directory.GetCurrentDirectory()
+});
 
 // JWT KEY GENERATION AND VALIDATION
 string jwtKey = EnsureJwtKey(builder.Configuration);
@@ -265,6 +269,12 @@ static string GenerateJwtKey()
     }
     return Convert.ToBase64String(key);
 }
+
+// Disable file change monitoring to prevent inotify issues
+builder.Configuration.Sources
+    .OfType<FileConfigurationSource>()
+    .ToList()
+    .ForEach(s => s.ReloadOnChange = false);
 
 var app = builder.Build();
 
