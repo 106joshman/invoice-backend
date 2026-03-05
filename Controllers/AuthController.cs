@@ -10,10 +10,10 @@ namespace InvoiceService.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(AuthService authService, UserService userService) : ControllerBase
+public class AuthController(AuthService authService) : ControllerBase
 {
     private readonly AuthService _authService = authService;
-    private readonly UserService _userService = userService;
+    // private readonly UserService _userService = userService;, UserService userService
 
     [EnableRateLimiting("registerPolicy")]
     [HttpPost("register-business")]

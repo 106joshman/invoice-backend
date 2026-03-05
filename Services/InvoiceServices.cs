@@ -13,9 +13,9 @@ public class InvoiceServices(ApplicationDbContext context)
     {
         var business = await _context.Businesses.FindAsync(businessId) ?? throw new KeyNotFoundException("business not found");
 
-        // CHECK SUBSCRIPTION LIMIT
-        if (business.SubscriptionPlan == "Free" && business.MonthlyInvoiceCount >= 2)
-            throw new InvalidOperationException("Free plan users can only create 2 invoices per month. Please upgrade to continue.");
+        // CHECK SUBSCRIPTION LIMIT FOR FREE PLAN USERS
+        // if (business.SubscriptionPlan == "Free" && business.MonthlyInvoiceCount >= 2)
+        //     throw new InvalidOperationException("Free plan users can only create 2 invoices per month. Please upgrade to continue.");
 
         var customer = await _context.Customers
             .FirstOrDefaultAsync(c =>
@@ -271,85 +271,85 @@ public class InvoiceServices(ApplicationDbContext context)
             ?? throw new KeyNotFoundException("User not found.");
 
         // ✅ Check if Free user has reached their invoice limit
-        bool isFreeLocked =
-            business.SubscriptionPlan == "Free" &&
-            business.MonthlyInvoiceCount >= 2;
+        // bool isFreeLocked =
+        //     business.SubscriptionPlan == "Free" &&
+        //     business.MonthlyInvoiceCount >= 2;
 
         // ✅ Restrict Free users when monthly invoice count is maxed
-        if (isFreeLocked)
-        {
-            throw new InvalidOperationException(
-                "Free plan reached. Upgrade to edit invoices.");
-        }
+        // if (isFreeLocked)
+        // {
+        //     throw new InvalidOperationException(
+        //         "Free plan reached. Upgrade to edit invoices.");
+        // }
 
 
-        if (isFreeLocked)
-        {
-            // 🧾 Allow only non-financial updates
-            if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Status))
-                invoice.Status = invoiceUpdateDto.Status;
+        // if (isFreeLocked)
+        // {
+        //     // 🧾 Allow only non-financial updates
+        //     if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Status))
+        //         invoice.Status = invoiceUpdateDto.Status;
 
-            if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Notes))
-                invoice.Notes = invoiceUpdateDto.Notes;
+        //     if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Notes))
+        //         invoice.Notes = invoiceUpdateDto.Notes;
 
-            if (invoiceUpdateDto.DueDate.HasValue)
-                invoice.DueDate = invoiceUpdateDto.DueDate.Value;
+        //     if (invoiceUpdateDto.DueDate.HasValue)
+        //         invoice.DueDate = invoiceUpdateDto.DueDate.Value;
 
-            if (invoiceUpdateDto.TaxRate.HasValue)
-                invoice.TaxRate = invoiceUpdateDto.TaxRate.Value;
+        //     if (invoiceUpdateDto.TaxRate.HasValue)
+        //         invoice.TaxRate = invoiceUpdateDto.TaxRate.Value;
 
-            if (invoiceUpdateDto.Discount.HasValue)
-                invoice.Discount = invoiceUpdateDto.Discount.Value;
+        //     if (invoiceUpdateDto.Discount.HasValue)
+        //         invoice.Discount = invoiceUpdateDto.Discount.Value;
 
-            invoice.UpdatedAt = DateTime.UtcNow;
+        //     invoice.UpdatedAt = DateTime.UtcNow;
 
-            // 🧾 AUDIT LOG
-            _context.AuditLogs.Add(new AuditLog
-            {
-                Action = "UPDATE",
-                EntityName = "INVOICE",
-                EntityId = invoice.Id,
-                UserId = userId,
-                BusinessId = businessId,
-                ChangeBy = userId.ToString()
-            });
+        //     // 🧾 AUDIT LOG
+        //     _context.AuditLogs.Add(new AuditLog
+        //     {
+        //         Action = "UPDATE",
+        //         EntityName = "INVOICE",
+        //         EntityId = invoice.Id,
+        //         UserId = userId,
+        //         BusinessId = businessId,
+        //         ChangeBy = userId.ToString()
+        //     });
 
-            await _context.SaveChangesAsync();
+        //     await _context.SaveChangesAsync();
 
-            return new InvoiceResponseDto
-            {
-                Id = invoice.Id,
-                InvoiceNumber = invoice.InvoiceNumber,
-                Status = invoice.Status,
-                IssueDate = invoice.IssueDate,
-                DueDate = invoice.DueDate,
-                Subtotal = invoice.Subtotal,
-                TaxRate = invoice.TaxRate,
-                TaxAmount = invoice.TaxAmount,
-                Discount = invoice.Discount,
-                Total = invoice.Total,
-                Notes = invoice.Notes,
-                CreatedAt = invoice.CreatedAt,
-                Customer = new CustomerResponseDto
-                {
-                    Id = invoice.Customer.Id,
-                    Name = invoice.Customer.Name,
-                    Email = invoice.Customer.Email,
-                    Company = invoice.Customer.Company,
-                    Address = invoice.Customer.Address,
-                    PhoneNumber = invoice.Customer.PhoneNumber,
-                    CreatedAt = invoice.Customer.CreatedAt
-                },
-                Items = [.. invoice.Items.Select(it => new InvoiceItemResponseDto
-                {
-                    Id = it.Id,
-                    Description = it.Description,
-                    Quantity = it.Quantity,
-                    UnitPrice = it.UnitPrice,
-                    Amount = it.Amount
-                })]
-            };
-        }
+        //     return new InvoiceResponseDto
+        //     {
+        //         Id = invoice.Id,
+        //         InvoiceNumber = invoice.InvoiceNumber,
+        //         Status = invoice.Status,
+        //         IssueDate = invoice.IssueDate,
+        //         DueDate = invoice.DueDate,
+        //         Subtotal = invoice.Subtotal,
+        //         TaxRate = invoice.TaxRate,
+        //         TaxAmount = invoice.TaxAmount,
+        //         Discount = invoice.Discount,
+        //         Total = invoice.Total,
+        //         Notes = invoice.Notes,
+        //         CreatedAt = invoice.CreatedAt,
+        //         Customer = new CustomerResponseDto
+        //         {
+        //             Id = invoice.Customer.Id,
+        //             Name = invoice.Customer.Name,
+        //             Email = invoice.Customer.Email,
+        //             Company = invoice.Customer.Company,
+        //             Address = invoice.Customer.Address,
+        //             PhoneNumber = invoice.Customer.PhoneNumber,
+        //             CreatedAt = invoice.Customer.CreatedAt
+        //         },
+        //         Items = [.. invoice.Items.Select(it => new InvoiceItemResponseDto
+        //         {
+        //             Id = it.Id,
+        //             Description = it.Description,
+        //             Quantity = it.Quantity,
+        //             UnitPrice = it.UnitPrice,
+        //             Amount = it.Amount
+        //         })]
+        //     };
+        // }
 
         if (!string.IsNullOrWhiteSpace(invoiceUpdateDto.Status))
             invoice.Status = invoiceUpdateDto.Status;

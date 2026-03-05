@@ -15,7 +15,9 @@ public class Business
     public string PhoneNumber { get; set; } = string.Empty;
     public string TaxId { get; set; } = string.Empty;
     public string CompanyLogoUrl { get; set; } = string.Empty;
-    public string BrandColor { get; set; } = "#000000";
+    public string? BrandColor { get; set; } = "#000000";
+    public string? IndustryGroup { get; set;} = string.Empty;
+    public string? IndustrySector { get; set;} = string.Empty;
     public int MonthlyInvoiceCount { get; set; } = 0;
     public bool IsDeleted { get; set; } = false;
     public DateTime? LastInvoiceReset { get; set; } = DateTime.UtcNow;

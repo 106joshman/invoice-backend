@@ -36,13 +36,21 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         if (await _context.Users.AnyAsync(u => u.Email == normalizedUserEmail))
             throw new InvalidOperationException("Email already exist.");
 
+        if (string.IsNullOrWhiteSpace(registrationDto.IndustryGroup) || string.IsNullOrWhiteSpace(registrationDto.IndustrySector))
+        {
+            throw new ArgumentException("Industry is empty from DTO");
+        }
+
         // CREATING AN ADMIN USER FOR THE BUSINESS,
+        Console.WriteLine($"Industry from DTO: '{registrationDto.IndustryGroup}' - '{registrationDto.IndustrySector}'");
         var business = new Business
         {
             Name = registrationDto.BusinessName,
             Address = registrationDto.BusinessAddress,
             PhoneNumber = registrationDto.PhoneNumber,
             IsMultiTenant = registrationDto.IsMultiTenant,
+            IndustryGroup = registrationDto.IndustryGroup,
+            IndustrySector = registrationDto.IndustrySector,
             Email = normalizedBusinessEmail,
             SubscriptionPlan = "Free",
         };
@@ -99,6 +107,9 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             IsMultiTenant = business.IsMultiTenant,
             FullName = businessOwner.FullName,
             Email = businessOwner.Email,
+            BusinessEmail = business.Email,
+            IndustryGroup = business.IndustryGroup,
+            IndustrySector = business.IndustrySector,
             Message = emailSent
                 ? "Business created. Set password link sent."
                 : "Business created. Email failed — resend activitation."

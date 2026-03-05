@@ -202,41 +202,44 @@ public class BusinessController(BusinessService businessService, EmailService _e
             return BadRequest(new { message = ex.Message });
         }
     }
-    // public async Task<ActionResult> UpdateBusiness(Guid businessId, [FromBody] BusinessUpdateDto updateDto)
-    // {
-    //     try
-    //     {
-    //         var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-    //         var currentUserRole = User.FindFirstValue(ClaimTypes.Role) ?? "User";
 
-    //         if (string.IsNullOrEmpty(currentUserId))
-    //             return Unauthorized(new { message = "Invalid or missing user identity." });
+    [HttpPut("update/{businessId}")]
+    [Authorize]
+    public async Task<ActionResult> UpdateBusiness(Guid businessId, [FromBody] UpdateBusinessDto updateDto)
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentUserRole = User.FindFirstValue(ClaimTypes.Role) ?? "User";
 
-    //         var userGuid = Guid.Parse(currentUserId);
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid or missing user identity." });
 
-    //         var updatedBusiness = await _businessService.UpdateBusinessAsync(
-    //             businessId,
-    //             userGuid,
-    //             currentUserRole,
-    //             updateDto);
+            var userGuid = Guid.Parse(currentUserId);
 
-    //         return Ok(new
-    //         {
-    //             message = "Business updated successfully",
-    //             data = updatedBusiness
-    //         });
-    //     }
-    //     catch (UnauthorizedAccessException ex)
-    //     {
-    //         return Unauthorized(new { message = ex.Message });
-    //     }
-    //     catch (KeyNotFoundException ex)
-    //     {
-    //         return NotFound(new { message = ex.Message });
-    //     }
-    //     catch (Exception ex)
-    //     {
-    //         return BadRequest(new { message = ex.Message });
-    //     }
-    // }
+            var updatedBusiness = await _businessService.UpdateBusinessAsync(
+                businessId,
+                userGuid,
+                currentUserRole,
+                updateDto);
+
+            return Ok(new
+            {
+                message = "Business updated successfully",
+                data = updatedBusiness
+            });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }

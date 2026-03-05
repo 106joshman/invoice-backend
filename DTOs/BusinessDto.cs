@@ -11,13 +11,15 @@ public class BusinessResponseDto
     public int MonthlyInvoiceCount { get; set; }
     public bool IsMultiTenant { get; set; }
     public string BrandColor { get; set; } = default!;
+    public string IndustryGroup { get; set;} = default!;
+    public string IndustrySector { get; set;} = default!;
     public string CompanyLogoUrl { get; set; } = default!;
-    public List<BBusinessMemberDto> TeamMembers { get; set; } = [];
+    public List<BusinessMemberDto> TeamMembers { get; set; } = [];
     public PaymentInfoResponseDto? PaymentInfo { get; set; }
     public DateTime CreatedAt { get; set; }
 }
 
-public class BBusinessMemberDto
+public class BusinessMemberDto
 {
     public Guid UserId { get; set; }
     public string FullName { get; set; } = string.Empty;
@@ -62,4 +64,15 @@ public class BusinessInvoiceStatsDto
     public decimal TotalOutstanding { get; set; }
     public decimal TotalOverdue { get; set; }
     public int DraftCount { get; set; }
+}
+
+public class UpdateBusinessDto
+{
+    public string? Address { get; set; }
+    public string? Email { get; set; }
+    public string? PhoneNumber { get; set; }
+    public string? BrandColor { get; set; }
+    public string? IndustryGroup { get; set;}
+    public string? IndustrySector { get; set;}
+    public string? CompanyLogoUrl { get; set; }
 }

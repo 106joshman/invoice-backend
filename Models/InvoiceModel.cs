@@ -28,6 +28,10 @@ public class Invoice
     public decimal TaxAmount { get; set; }
     public decimal Discount { get; set; }
     public decimal Total { get; set; }
+    // public decimal AmountPaid { get; set; }
+
+    // [NotMapped]
+    // public decimal AmountDue => Total - AmountPaid;
     public string Notes { get; set; } = string.Empty;
     public bool IsDeleted { get; set; } = false;
     public DateTime? DeletedAt { get; set; }

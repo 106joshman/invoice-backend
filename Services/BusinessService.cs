@@ -56,7 +56,9 @@ public class BusinessService (ApplicationDbContext context, EncryptionHelper enc
             SubscriptionPlan = business.SubscriptionPlan,
             MonthlyInvoiceCount = business.MonthlyInvoiceCount,
             IsMultiTenant = business.IsMultiTenant,
-            BrandColor = business.BrandColor,
+            BrandColor = business.BrandColor ?? "#000000",
+            IndustryGroup = business.IndustryGroup ?? "",
+            IndustrySector = business.IndustrySector ?? "",
             CompanyLogoUrl = business.CompanyLogoUrl,
             CreatedAt = business.CreatedAt,
             PaymentInfo = await _context.PaymentInfo
@@ -77,7 +79,7 @@ public class BusinessService (ApplicationDbContext context, EncryptionHelper enc
 
             TeamMembers = [.. business.BusinessUsers
                 .Where(bu => !bu.IsDeleted)
-                .Select(bu => new BBusinessMemberDto
+                .Select(bu => new BusinessMemberDto
                 {
                     UserId = bu.UserId,
                     FullName = bu.User.FullName,
@@ -137,6 +139,8 @@ public class BusinessService (ApplicationDbContext context, EncryptionHelper enc
                 Address = business.Address,
                 Email = business.Email,
                 PhoneNumber = business.PhoneNumber,
+                IndustryGroup = business.IndustryGroup ?? "",
+                IndustrySector = business.IndustrySector ?? "",
                 SubscriptionPlan = business.SubscriptionPlan,
                 IsMultiTenant = business.IsMultiTenant,
                 CompanyLogoUrl = business.CompanyLogoUrl,
@@ -304,5 +308,54 @@ public class BusinessService (ApplicationDbContext context, EncryptionHelper enc
         });
 
         await _context.SaveChangesAsync();
+    }
+
+    public async Task<BusinessResponseDto> UpdateBusinessAsync(Guid businessId,
+        Guid requestingUserId,
+        string requestingUserRole,
+        UpdateBusinessDto updateDto)
+    {
+        var hasAccess = await HasAccessToBusinessAsync(requestingUserId, requestingUserRole, businessId);
+
+        if (!hasAccess)
+            throw new UnauthorizedAccessException(
+                "You do not have access to update this business.");
+
+        var business = await _context.Businesses
+            .FirstOrDefaultAsync(b =>
+                b.Id == businessId && !b.IsDeleted)
+            ?? throw new Exception("Business not found");
+
+        // UPDATE FIELDS
+        if (!string.IsNullOrWhiteSpace(updateDto.Email))
+            business.Email = updateDto.Email;
+        if (!string.IsNullOrWhiteSpace(updateDto.Address))
+            business.Address = updateDto.Address;
+        if (!string.IsNullOrWhiteSpace(updateDto.PhoneNumber))
+            business.PhoneNumber = updateDto.PhoneNumber;
+        if (!string.IsNullOrWhiteSpace(updateDto.BrandColor))
+            business.BrandColor = updateDto.BrandColor;
+        if (!string.IsNullOrWhiteSpace(updateDto.IndustryGroup))
+            business.IndustryGroup = updateDto.IndustryGroup;
+        if (!string.IsNullOrWhiteSpace(updateDto.IndustrySector))
+            business.IndustrySector = updateDto.IndustrySector;
+        if (!string.IsNullOrWhiteSpace(updateDto.CompanyLogoUrl))
+            business.CompanyLogoUrl = updateDto.CompanyLogoUrl;
+
+        _context.AuditLogs.Add(new AuditLog
+        {
+            Action = "UPDATE_BUSINESS",
+            EntityName = "BUSINESS",
+            EntityId = businessId,
+            UserId = requestingUserId,
+            ChangeBy = requestingUserId.ToString()
+        });
+
+        await _context.SaveChangesAsync();
+
+        return new BusinessResponseDto
+        {
+             Id = business.Id, Name = business.Name, Email = business.Email, Address = business.Address
+        , PhoneNumber = business.PhoneNumber, SubscriptionPlan = business.SubscriptionPlan, IsMultiTenant = business.IsMultiTenant, CompanyLogoUrl = business.CompanyLogoUrl, IndustryGroup = business.IndustryGroup ?? "", IndustrySector = business.IndustrySector ?? "", CreatedAt = business.CreatedAt };
     }
 }

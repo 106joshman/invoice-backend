@@ -19,6 +19,8 @@ namespace InvoiceService.DTOs
         public string BusinessName { get; set; } = string.Empty;
         public string BusinessAddress { get; set; } = string.Empty;
         public string PhoneNumber { get; set; } = string.Empty;
+        public string IndustryGroup { get; set;} = string.Empty;
+        public string IndustrySector { get; set;} = string.Empty;
         public bool IsMultiTenant { get; set; }
         public string? Message { get; set; }
     }
@@ -33,6 +35,8 @@ namespace InvoiceService.DTOs
         public bool IsMultiTenant { get; set; }
         public string? FullName { get; set; }
         public string? Email { get; set; }
+        public string? IndustryGroup { get; set; }
+        public string? IndustrySector { get; set; }
         public string? Message { get; set; }
     }
 
