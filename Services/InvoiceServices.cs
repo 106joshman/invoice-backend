@@ -363,24 +363,38 @@ public class InvoiceServices(ApplicationDbContext context)
         // ✅ Handle Invoice Items Update
         if (invoiceUpdateDto.Items != null && invoiceUpdateDto.Items.Count > 0)
         {
+            foreach (var updatedItem in invoiceUpdateDto.Items)
+            {
+                var existingItem = invoice.Items.FirstOrDefault(i => i.Id == updatedItem.Id);
+
+                if (existingItem != null)
+                {
+                    existingItem.Description = updatedItem.Description ?? existingItem.Description;
+                    existingItem.Quantity = updatedItem.Quantity > 0 ? updatedItem.Quantity : existingItem.Quantity;
+                    existingItem.UnitPrice = updatedItem.UnitPrice > 0 ? updatedItem.UnitPrice : existingItem.UnitPrice;
+                    existingItem.Amount = updatedItem.Quantity * updatedItem.UnitPrice;
+
+                }
+            }
+
+            // Recalculate financials
+            invoice.Subtotal = invoice.Items.Sum(i => i.Amount);
+            invoice.TaxAmount = invoice.Subtotal * (invoice.TaxRate / 100);
+            invoice.Total = invoice.Subtotal + invoice.TaxAmount - invoice.Discount;
             // Clear existing items
-            _context.InvoiceItems.RemoveRange(invoice.Items);
+            // _context.InvoiceItems.RemoveRange(invoice.Items);
 
             // Add new items and recalculate amounts
-            invoice.Items = [.. invoiceUpdateDto.Items.Select(it => new InvoiceItem
-            {
-                Description = it.Description,
-                Quantity = it.Quantity,
-                UnitPrice = it.UnitPrice,
-                Amount = it.Quantity * it.UnitPrice,
-                InvoiceId = invoice.Id
-            })];
+            // invoice.Items = [.. invoiceUpdateDto.Items.Select(it => new InvoiceItem
+            // {
+            //     Description = it.Description,
+            //     Quantity = it.Quantity,
+            //     UnitPrice = it.UnitPrice,
+            //     Amount = it.Quantity * it.UnitPrice,
+            //     InvoiceId = invoice.Id
+            // })];
         }
 
-        // Recalculate financials
-        invoice.Subtotal = invoice.Items.Sum(i => i.Quantity * i.UnitPrice);
-        invoice.TaxAmount = invoice.Subtotal * (invoice.TaxRate / 100);
-        invoice.Total = invoice.Subtotal + invoice.TaxAmount - invoice.Discount;
         invoice.UpdatedAt = DateTime.UtcNow;
 
         // 🔐 AUDIT LOG

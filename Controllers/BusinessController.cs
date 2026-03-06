@@ -242,4 +242,29 @@ public class BusinessController(BusinessService businessService, EmailService _e
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpGet("admin-dashboard-stats")]
+    [Authorize(Roles = "super_admin,Admin")]
+    public async Task<IActionResult> GetAdminDashboardStats()
+    {
+        try
+        {
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            Console.WriteLine($"Current User ID: {currentUserId}");
+            Console.WriteLine($"Current User: {User}");
+            var currentUserRole = User.FindFirstValue(ClaimTypes.Role) ?? "User";
+
+            if (string.IsNullOrEmpty(currentUserId))
+                return Unauthorized(new { message = "Invalid or missing user identity." });
+
+            var adminUserId = Guid.Parse(currentUserId);
+
+            var stats = await _businessService.GetAdminDashboardStatsAsync(adminUserId, currentUserRole);
+            return Ok(stats);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }

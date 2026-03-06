@@ -358,4 +358,120 @@ public class BusinessService (ApplicationDbContext context, EncryptionHelper enc
              Id = business.Id, Name = business.Name, Email = business.Email, Address = business.Address
         , PhoneNumber = business.PhoneNumber, SubscriptionPlan = business.SubscriptionPlan, IsMultiTenant = business.IsMultiTenant, CompanyLogoUrl = business.CompanyLogoUrl, IndustryGroup = business.IndustryGroup ?? "", IndustrySector = business.IndustrySector ?? "", CreatedAt = business.CreatedAt };
     }
+
+    public async Task<AdminDashboardStatsDto> GetAdminDashboardStatsAsync(Guid requestingUserId, string requestingUserRole)
+    {
+        var requester = await _context.Users
+        .AsNoTracking()
+        .FirstOrDefaultAsync(u => u.Id == requestingUserId && !u.IsDeleted)
+        ?? throw new UnauthorizedAccessException("Invalid user");
+
+        if (!requestingUserRole.Equals("super_admin", StringComparison.OrdinalIgnoreCase) &&
+            !requestingUserRole.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new UnauthorizedAccessException(
+                "You do not have permission to access dashboard stats.");
+        }
+
+        var now = DateTime.UtcNow;
+        var startOfCurrentMonth = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var startOfPreviousMonth = startOfCurrentMonth.AddMonths(-1);
+        var endOfPreviousMonth = startOfCurrentMonth;;
+
+        var totalBusinesses = await _context.Businesses.CountAsync(b => !b.IsDeleted);
+        var lastMonthBusinesses = await _context.Businesses
+            .Where(b => !b.IsDeleted &&
+                b.CreatedAt >= startOfPreviousMonth &&
+                b.CreatedAt < endOfPreviousMonth)
+            .CountAsync();
+
+        var invoiceStats = await _context.Invoices
+            .Where(i => !i.IsDeleted)
+            .GroupBy(i => 1)
+            .Select(g => new
+            {
+                TotalInvoices = g.Count(),
+                TotalRevenue = g.Sum(i => i.Total),
+                AvgInvoice = g.Average(i => i.Total)
+            })
+            .FirstOrDefaultAsync();
+
+        // var totalRevenue = await _context.Invoices
+        //     .Where(i => !i.IsDeleted && i.Status == "Paid")
+        //     .SumAsync(i => (decimal?)i.Total) ?? 0m;
+        // LAST MONTH INVOICES
+        var lastMonthInvoices = await _context.Invoices
+            .Where(i => !i.IsDeleted &&
+                i.CreatedAt >= startOfPreviousMonth &&
+                i.CreatedAt < endOfPreviousMonth)
+            .GroupBy(i => 1)
+            .Select(g => new
+            {
+                TotalInvoices = g.Count(),
+                TotalRevenue = g.Sum(i => i.Total),
+                AvgInvoice = g.Average(i => i.Total)
+            })
+            .FirstOrDefaultAsync();
+
+        // var averageInvoiceValue = totalInvoices > 0 ? totalRevenue / totalInvoices : 0m;
+
+        // var averageRevenuePerBusiness = totalBusinesses > 0 ? totalRevenue / totalBusinesses : 0m;
+
+        var businessesWithOverdueInvoices = await _context.Businesses
+            .Where(b => !b.IsDeleted)
+            .CountAsync(b => b.Invoices.Any(i => i.DueDate < DateTime.UtcNow && i.Status != "Paid" && !i.IsDeleted));
+
+        var businessesOnTrial = await _context.Businesses
+            .Where(b => !b.IsDeleted)
+            .CountAsync(b => b.SubscriptionPlan == "Free");
+
+        // ✅ Calculate all growth values
+        var revenueGrowth = CalculateGrowth(
+            invoiceStats?.TotalRevenue ?? 0,
+            lastMonthInvoices?.TotalRevenue ?? 0
+        );
+
+        var invoiceGrowth = CalculateGrowth(
+            invoiceStats?.TotalInvoices ?? 0,
+            lastMonthInvoices?.TotalInvoices ?? 0
+        );
+
+        var businessGrowth = CalculateGrowth(
+            totalBusinesses,
+            lastMonthBusinesses
+        );
+
+        var averageInvoiceGrowth = CalculateGrowth(
+            invoiceStats?.AvgInvoice ?? 0,
+            lastMonthInvoices?.AvgInvoice ?? 0
+        );
+
+        return new AdminDashboardStatsDto
+        {
+            TotalBusinesses = totalBusinesses,
+            TotalInvoices = invoiceStats?.TotalInvoices ?? 0,
+            TotalRevenue = invoiceStats?.TotalRevenue ?? 0m,
+            AverageInvoiceValue = invoiceStats?.AvgInvoice ?? 0m,
+
+            LastMonthBusinesses = lastMonthBusinesses,
+            LastMonthInvoices = lastMonthInvoices?.TotalInvoices ?? 0,
+            LastMonthRevenue = lastMonthInvoices?.TotalRevenue ?? 0m,
+            LastMonthAverageInvoiceValue = lastMonthInvoices?.AvgInvoice ?? 0m,
+
+            BusinessesWithOverdueInvoices = businessesWithOverdueInvoices,
+            BusinessesOnTrial = businessesOnTrial,
+
+            // ✅ Include growth values in response
+            RevenueGrowth = revenueGrowth,
+            InvoiceGrowth = invoiceGrowth,
+            BusinessGrowth = businessGrowth,
+            AverageInvoiceGrowth = averageInvoiceGrowth,
+        };
+    }
+
+    private static decimal CalculateGrowth(decimal current, decimal previous)
+    {
+        if (previous == 0) return 100;
+        return (current - previous) / previous * 100;
+    }
 }

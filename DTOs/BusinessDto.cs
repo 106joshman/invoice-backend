@@ -76,3 +76,25 @@ public class UpdateBusinessDto
     public string? IndustrySector { get; set;}
     public string? CompanyLogoUrl { get; set; }
 }
+
+public class AdminDashboardStatsDto
+{
+    public int TotalBusinesses { get; set; }
+    public int TotalInvoices { get; set; }
+    public decimal TotalRevenue { get; set; }
+    public decimal AverageInvoiceValue { get; set; }
+
+    public int LastMonthBusinesses { get; set; }
+    public int LastMonthInvoices { get; set; }
+    public decimal LastMonthRevenue { get; set; }
+    public decimal LastMonthAverageInvoiceValue { get; set; }
+
+    public int BusinessesWithOverdueInvoices { get; set; }
+    public int BusinessesOnTrial { get; set; }
+
+    // ✅ Add these growth fields
+    public decimal RevenueGrowth { get; set; }
+    public decimal InvoiceGrowth { get; set; }
+    public decimal BusinessGrowth { get; set; }
+    public decimal AverageInvoiceGrowth { get; set; }
+}

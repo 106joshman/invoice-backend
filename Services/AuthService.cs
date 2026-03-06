@@ -36,13 +36,13 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         if (await _context.Users.AnyAsync(u => u.Email == normalizedUserEmail))
             throw new InvalidOperationException("Email already exist.");
 
-        if (string.IsNullOrWhiteSpace(registrationDto.IndustryGroup) || string.IsNullOrWhiteSpace(registrationDto.IndustrySector))
-        {
-            throw new ArgumentException("Industry is empty from DTO");
-        }
+        // if (string.IsNullOrWhiteSpace(registrationDto.IndustryGroup) || string.IsNullOrWhiteSpace(registrationDto.IndustrySector))
+        // {
+        //     throw new ArgumentException("Industry is empty from DTO");
+        // }
 
         // CREATING AN ADMIN USER FOR THE BUSINESS,
-        Console.WriteLine($"Industry from DTO: '{registrationDto.IndustryGroup}' - '{registrationDto.IndustrySector}'");
+        // Console.WriteLine($"Industry from DTO: '{registrationDto.IndustryGroup}' - '{registrationDto.IndustrySector}'");
         var business = new Business
         {
             Name = registrationDto.BusinessName,
