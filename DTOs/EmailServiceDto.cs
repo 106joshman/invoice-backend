@@ -18,3 +18,14 @@ public class EmailSettings
     public string FromName { get; set; } = default!;
     public string FromEmail { get; set; } = default!;
 }
+
+public class InvoiceEmailDto
+{
+    public string ToEmail { get; set; } = default!;
+    public string CustomerName { get; set; } = default!;
+    public string BusinessName { get; set; } = default!;
+    public string InvoiceNumber { get; set; } = default!;
+    public string InvoiceDate { get; set; } = default!;
+    public string DueDate { get; set; } = default!;
+    public string Total { get; set; } = default!;
+}

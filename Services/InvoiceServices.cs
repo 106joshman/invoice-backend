@@ -1,21 +1,30 @@
+using InvoiceService.Common;
 using InvoiceService.Data;
 using InvoiceService.DTOs;
 using InvoiceService.Models;
 using Microsoft.EntityFrameworkCore;
+using sib_api_v3_sdk.Model;
+
+// using sib_api_v3_sdk.Model;
+using Task = System.Threading.Tasks.Task;
 
 namespace InvoiceService.Services;
 
-public class InvoiceServices(ApplicationDbContext context)
+public class InvoiceServices(ApplicationDbContext context, EmailService _emailService)
 {
     private readonly ApplicationDbContext _context = context;
+    private readonly EmailService _emailService = _emailService;
 
-    public async Task<InvoiceResponseDto> CreateInvoice(Guid businessId, Guid userId, InvoiceRequestDto invoiceRequestDto)
+    public async Task<InvoiceResponseDto> CreateInvoice(
+        Guid businessId,
+        Guid userId,
+        InvoiceRequestDto invoiceRequestDto)
     {
         var business = await _context.Businesses.FindAsync(businessId) ?? throw new KeyNotFoundException("business not found");
 
         // CHECK SUBSCRIPTION LIMIT FOR FREE PLAN USERS
-        // if (business.SubscriptionPlan == "Free" && business.MonthlyInvoiceCount >= 2)
-        //     throw new InvalidOperationException("Free plan users can only create 2 invoices per month. Please upgrade to continue.");
+        // if (business.SubscriptionPlan == "Free" && business.MonthlyInvoiceCount >= 5)
+        //     throw new InvalidOperationException("Free plan users can only create 5 invoices per month. Please upgrade to continue.");
 
         var customer = await _context.Customers
             .FirstOrDefaultAsync(c =>
@@ -72,6 +81,9 @@ public class InvoiceServices(ApplicationDbContext context)
         });
         await _context.SaveChangesAsync();
 
+        var createdByUser = await _context.Users
+            .FirstOrDefaultAsync(u => u.Id == userId);
+
         // ✅ Map to response DTO
         var response = new InvoiceResponseDto
         {
@@ -88,7 +100,7 @@ public class InvoiceServices(ApplicationDbContext context)
             Notes = invoice.Notes,
             CreatedAt = invoice.CreatedAt,
             CreatedByUserId = invoice.CreatedByUserId,
-            CreatedBy = invoice.CreatedByUser.Email,
+            CreatedBy = createdByUser?.Email ?? "Unknown",
             BusinessId = invoice.BusinessId,
             Customer = new CustomerResponseDto
             {
@@ -168,7 +180,7 @@ public class InvoiceServices(ApplicationDbContext context)
         return invoices;
     }
 
-        public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(
+    public async Task<PaginatedResponse<InvoiceResponseDto>> GetAllInvoice(
         Guid userId,
         Guid businessId,
         PaginationParams paginationParams,
@@ -273,7 +285,7 @@ public class InvoiceServices(ApplicationDbContext context)
         // ✅ Check if Free user has reached their invoice limit
         // bool isFreeLocked =
         //     business.SubscriptionPlan == "Free" &&
-        //     business.MonthlyInvoiceCount >= 2;
+        //     business.MonthlyInvoiceCount >= 5;
 
         // ✅ Restrict Free users when monthly invoice count is maxed
         // if (isFreeLocked)
@@ -552,8 +564,78 @@ public class InvoiceServices(ApplicationDbContext context)
         };
     }
 
+    public async Task SendInvoicePdfAsync(
+        Guid businessId,
+        Guid userId,
+        Guid invoiceId)
+    {
+        var businessUser = await _context.BusinessUsers
+            .Include(bu => bu.Business)
+            .FirstOrDefaultAsync(bu =>
+                bu.UserId == userId &&
+                bu.BusinessId == businessId &&
+                bu.IsActive &&
+                !bu.IsDeleted &&
+                !bu.Business.IsDeleted)
+            ?? throw new UnauthorizedAccessException("Access denied.");
 
-    public async Task DeleteInvoice(Guid userId, Guid invoiceId, Guid businessId)
+        var invoice = await _context.Invoices
+            .Include(i => i.Customer)
+            .Include(i => i.Items)
+            .Include(i => i.Business)
+            .FirstOrDefaultAsync(i =>
+                i.Id == invoiceId &&
+                i.BusinessId == businessId &&
+                !i.IsDeleted)
+            ?? throw new KeyNotFoundException("Invoice not found.");
+
+        // ✅ GENERATE PDF USING PDF GENERATOR
+        byte[] pdfBytes;
+        try
+        {
+            pdfBytes = InvoicePdfGenerator.Generate(invoice);
+        }
+        catch (Exception ex)
+        {
+            // Log the real error so you can see exactly what iText7 is complaining about
+            Console.WriteLine($"PDF Generation Failed: {ex.Message}");
+            Console.WriteLine(ex.StackTrace);
+            throw;
+        }
+        // = InvoicePdfGenerator.Generate(invoice);
+
+        // BUILD ATTACHEMENT
+        var attachment = new List<SendSmtpEmailAttachment>
+        {
+            new SendSmtpEmailAttachment
+            {
+                Content = pdfBytes,
+                Name = $"{invoice.InvoiceNumber}.pdf",
+            }
+        };
+
+        var dto = new InvoiceEmailDto
+        {
+            ToEmail = invoice.Customer.Email,
+            CustomerName = invoice.Customer.Name,
+            BusinessName = invoice.Business.Name,
+            InvoiceNumber = invoice.InvoiceNumber,
+            InvoiceDate = invoice.IssueDate.ToString("MMMM dd, yyyy"),
+            DueDate = invoice.DueDate.ToString("MMMM dd, yyyy"),
+            Total = $"NGN {invoice.Total:N2}"
+        };
+
+        var htmlBody = EmailTemplates.InvoiceNotification(dto);
+
+        await _emailService.SendInvoiceEmailAsync(
+            dto,
+            attachment);
+    }
+
+    public async Task DeleteInvoice(
+        Guid userId,
+        Guid invoiceId,
+        Guid businessId)
     {
         var invoice = await _context.Invoices
         .FirstOrDefaultAsync(c =>

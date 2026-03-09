@@ -245,6 +245,26 @@ public class InvoiceController(InvoiceServices invoiceService) : ControllerBase
         }
     }
 
+    [HttpPost("{id}/send")]
+    public async Task<IActionResult> SendInvoice(Guid id)
+    {
+        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var businessId = User.FindFirstValue("BusinessId");
+
+        if (string.IsNullOrEmpty(currentUserId))
+            return Unauthorized(new { message = "Invalid or missing identity access." });
+
+        var userId = Guid.Parse(currentUserId);
+        var businessGuid = Guid.Parse(businessId!);
+
+        await _invoiceService.SendInvoicePdfAsync(
+            businessGuid,
+            userId,
+            id
+        );
+        return Ok(new { message = "Invoice sent successfully!" });
+    }
+
     [HttpDelete("{invoiceId}")]
     [Authorize]
     public async Task<IActionResult> DeleteInvoice(Guid invoiceId)

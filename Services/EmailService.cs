@@ -33,7 +33,8 @@ public class EmailService
     private async Task SendEmailAsync(
         string toEmail,
         string subject,
-        string htmlBody)
+        string htmlBody,
+        List<SendSmtpEmailAttachment>? attachments = null)
     {
         var fromEmail = _configuration["EmailSettings:FromEmail"];
         var fromName = _configuration["EmailSettings:FromName"];
@@ -45,10 +46,7 @@ public class EmailService
         {
             To = new List<SendSmtpEmailTo>
             {
-                new SendSmtpEmailTo(
-                    toEmail.ToLowerInvariant(),
-                    null
-                )
+                new SendSmtpEmailTo(toEmail.ToLowerInvariant(), null)
             },
             Sender = new SendSmtpEmailSender
             {
@@ -56,7 +54,8 @@ public class EmailService
                 Name = fromName
             },
             Subject = subject,
-            HtmlContent = htmlBody
+            HtmlContent = htmlBody,
+            Attachment = attachments
         };
 
         // Console.WriteLine("📧 Sending email:");
@@ -98,6 +97,7 @@ public class EmailService
     public async Task SendPasswordResetEmailAsync(
         string email,
         string fullName,
+        string businessName,
         string link)
     {
         var body = EmailTemplates.PasswordReset(
@@ -105,6 +105,7 @@ public class EmailService
             {
                 ToEmail = email,
                 FullName = fullName,
+                BusinessName = businessName,
                 Link = link
             }
         );
@@ -114,5 +115,18 @@ public class EmailService
             "Reset your password",
             body
         );
+    }
+
+    public async Task SendInvoiceEmailAsync(
+        InvoiceEmailDto dto,
+        List<SendSmtpEmailAttachment> attachments)
+    {
+        var body = EmailTemplates.InvoiceNotification(dto);
+
+        await SendEmailAsync(
+            dto.ToEmail,
+            $"Invoice {dto.InvoiceNumber}",
+            body,
+            attachments);
     }
 }

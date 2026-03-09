@@ -58,4 +58,60 @@ public static class EmailTemplates
             <strong>Alpha Tech Team</strong></p>
         </div>";
     }
+
+    public static string InvoiceNotification(InvoiceEmailDto model)
+    {
+        return $@"
+        <div style='font-family: Arial, sans-serif; line-height: 1.6; color:#333; max-width:600px;'>
+            <h2 style='color:#2c3e50;'>Invoice from Alpha Tech - InvoicePro</h2>
+
+            <p>Hello <strong>{model.CustomerName}</strong>,</p>
+
+            <p>
+                Thank you for doing business with <strong>{model.BusinessName}</strong>.
+            </p>
+
+            <p>
+                Please find attached the invoice <strong>#{model.InvoiceNumber}</strong>
+                for the services/products provided.
+            </p>
+
+            <table style='border-collapse: collapse; margin-top:15px;'>
+                <tr>
+                    <td style='padding:6px 10px;'><strong>Invoice Number:</strong></td>
+                    <td style='padding:6px 10px;'>{model.InvoiceNumber}</td>
+                </tr>
+                <tr>
+                    <td style='padding:6px 10px;'><strong>Invoice Date:</strong></td>
+                    <td style='padding:6px 10px;'>{model.InvoiceDate}</td>
+                </tr>
+                <tr>
+                    <td style='padding:6px 10px;'><strong>Amount Due:</strong></td>
+                    <td style='padding:6px 10px;'>{model.Total}</td>
+                </tr>
+                <tr>
+                    <td style='padding:6px 10px;'><strong>Due Date:</strong></td>
+                    <td style='padding:6px 10px;'>{model.DueDate}</td>
+                </tr>
+            </table>
+
+            <p style='margin-top:20px;'>
+                The invoice is attached as a <strong>PDF document</strong>.
+                Please review it and make payment before the due date.
+            </p>
+
+            <p>
+                If you have any questions regarding this invoice, please reply to this email.
+            </p>
+
+            <br/>
+
+            <p>
+                Best regards,<br/>
+                <strong>{model.BusinessName}</strong><br/>
+                Alpha Tech Team
+            </p>
+
+        </div>";
+    }
 }

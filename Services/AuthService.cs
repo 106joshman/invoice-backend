@@ -92,7 +92,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         await _context.SaveChangesAsync();
 
-        var emailSent = await SendSetPasswordLinkAsync(businessOwner);
+        var emailSent = await SendSetPasswordLinkAsync(businessOwner, EmailType.Welcome);
 
         // RECORD EMAIL STATUS
         businessOwner.CredentialsEmailSent = emailSent;
@@ -286,7 +286,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         // 🔐 SAVE CORE DATA FIRST (IMPORTANT)
         await _context.SaveChangesAsync();
-        var emailSent = await SendSetPasswordLinkAsync(newUser);
+        var emailSent = await SendSetPasswordLinkAsync(newUser, EmailType.Welcome);
 
         // ✅ RECORD EMAIL STATUS
         newUser.CredentialsEmailSent = emailSent;
@@ -322,7 +322,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
         await EnsureCanResetPassword(adminId, targetBusinessUser);
 
-        var emailSent = await SendSetPasswordLinkAsync(targetBusinessUser.User);
+        var emailSent = await SendSetPasswordLinkAsync(targetBusinessUser.User, EmailType.PasswordReset);
 
         targetBusinessUser.User.CredentialsEmailSent = emailSent;
 
@@ -378,7 +378,9 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         await _context.SaveChangesAsync();
     }
 
-    private async Task<bool> SendSetPasswordLinkAsync(User user)
+    private async Task<bool> SendSetPasswordLinkAsync(
+        User user,
+        EmailType emailType = EmailType.Welcome)
     {
         try
         {
@@ -396,12 +398,24 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                 .Select(bu => bu.Business.Name)
                 .FirstOrDefaultAsync() ?? "Your Business";
 
-            await _emailService.SendWelcomeSetPasswordEmailAsync(
-                user.Email,
-                user.FullName,
-                businessName,
-                link
-            );
+            if (emailType == EmailType.PasswordReset)
+            {
+                await _emailService.SendPasswordResetEmailAsync(
+                    user.Email,
+                    user.FullName,
+                    businessName,
+                    link
+                );
+            }
+            else
+            {
+                await _emailService.SendWelcomeSetPasswordEmailAsync(
+                    user.Email,
+                    user.FullName,
+                    businessName,
+                    link
+                );
+            }
 
             return true;
         }
@@ -550,7 +564,9 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         return email.Trim().ToLowerInvariant();
     }
 
-    public async Task EnforceCredentialResetLimits(Guid adminId, Guid targetUserId)
+    public async Task EnforceCredentialResetLimits(
+        Guid adminId,
+        Guid targetUserId)
     {
         var now = DateTime.UtcNow;
 
