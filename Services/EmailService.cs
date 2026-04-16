@@ -117,6 +117,18 @@ public class EmailService
         );
     }
 
+    public async Task SendAdminNotificationEmailAsync(
+        string subject,
+        string body)
+    {
+         var adminEmail = _configuration["EmailSettings:AdminEmail"] ?? throw new Exception("Admin email not configured.");
+
+        await SendEmailAsync(
+            adminEmail,
+            subject,
+            body);
+    }
+
     public async Task SendInvoiceEmailAsync(
         InvoiceEmailDto dto,
         List<SendSmtpEmailAttachment> attachments)

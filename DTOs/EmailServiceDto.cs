@@ -29,3 +29,13 @@ public class InvoiceEmailDto
     public string DueDate { get; set; } = default!;
     public string Total { get; set; } = default!;
 }
+
+public class AdminNotificationEmailDto
+{
+    public string Name { get; set; } = default!;
+    public string IndustryGroup { get; set; } = default!;
+    public string IndustrySector { get; set; } = default!;
+    public string FullName { get; set; } = default!;
+    public string Email { get; set; } = default!;
+    public string SubscriptionPlan { get; set; } = default!;
+}

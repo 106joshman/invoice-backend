@@ -4,7 +4,9 @@ using InvoiceService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 
 namespace InvoiceService.Controllers;
 
@@ -17,18 +19,20 @@ public class AuthController(AuthService authService) : ControllerBase
 
     [EnableRateLimiting("registerPolicy")]
     [HttpPost("register-business")]
-    [Authorize(Roles = "super_admin,admin")]
+    [AllowAnonymous]
     public async Task<IActionResult> RegisterBusiness([FromBody] BusinessRegistrationRequestDto createBusinessDto)
     {
         try
         {
+            Guid? admindId = null;
+
             var superAdminIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(superAdminIdClaim) || !Guid.TryParse(superAdminIdClaim, out Guid superAdminId))
+            if (!string.IsNullOrEmpty(superAdminIdClaim) && Guid.TryParse(superAdminIdClaim, out Guid superAdminId))
             {
-                return Unauthorized(new { message = "Invalid credentials." });
+                admindId = superAdminId;
             }
 
-            var response = await _authService.RegisterBusinessAsync(createBusinessDto, superAdminId);
+            var response = await _authService.RegisterBusinessAsync(createBusinessDto, admindId);
 
             return Ok(response);
         }
@@ -137,6 +141,16 @@ public class AuthController(AuthService authService) : ControllerBase
         {
             // 404 ERROR
             return NotFound(new { message = ex.Message });
+        }
+        catch (DbUpdateException ex)
+        {
+            if (ex.InnerException is PostgresException pgEx &&
+                pgEx.ConstraintName == "IX_Businesses_Name")
+            {
+                throw new InvalidOperationException("Business name already exists.");
+            }
+
+            throw;
         }
         catch (Exception ex)
         {

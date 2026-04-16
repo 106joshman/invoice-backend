@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Http.HttpResults;
+using InvoiceService.Common;
 
 namespace InvoiceService.Services;
 
@@ -21,13 +22,26 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
 
     public async Task<BusinessRegistrationResponseDto> RegisterBusinessAsync(
         BusinessRegistrationRequestDto registrationDto,
-        Guid adminUserId)
+        Guid? adminUserId = null)
     {
-        var superAdmin = await _context.Users
-            .FirstOrDefaultAsync(a =>
-            a.Id == adminUserId &&
-            (a.Role.ToLower() == "super_admin" || a.Role.ToLower() == "Admin"))
-            ?? throw new UnauthorizedAccessException("Only admins can create businesses");
+        var isSelfRegistration = adminUserId == null;
+
+        if(!isSelfRegistration)
+        {
+            var isAdmin = await _context.Users.AnyAsync(u =>
+            u.Id == adminUserId &&
+            (u.Role.ToLower() == "super_admin" || u.Role.ToLower() == "Admin"));
+
+            if (!isAdmin)
+                throw new UnauthorizedAccessException("Only admins can create businesses.");
+        }
+            // var superAdmin = await _context.Users
+            //     .FirstOrDefaultAsync(a =>
+            //     a.Id == adminUserId &&
+            //     (a.Role.ToLower() == "super_admin" || a.Role.ToLower() == "Admin"));
+
+            // if(!superAdmin)
+            //     ?? throw new UnauthorizedAccessException("Only admins can create businesses");
 
         var normalizedUserEmail = NormalizeEmail(registrationDto.Email);
         var normalizedBusinessEmail = NormalizeEmail(registrationDto.BusinessEmail);
@@ -36,13 +50,15 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         if (await _context.Users.AnyAsync(u => u.Email == normalizedUserEmail))
             throw new InvalidOperationException("Email already exist.");
 
+        if (await _context.Businesses.AnyAsync(b => b.Name == registrationDto.BusinessName))
+        {
+            throw new InvalidOperationException("Business name already exists.");
+        }
+
         // if (string.IsNullOrWhiteSpace(registrationDto.IndustryGroup) || string.IsNullOrWhiteSpace(registrationDto.IndustrySector))
         // {
         //     throw new ArgumentException("Industry is empty from DTO");
         // }
-
-        // CREATING AN ADMIN USER FOR THE BUSINESS,
-        // Console.WriteLine($"Industry from DTO: '{registrationDto.IndustryGroup}' - '{registrationDto.IndustrySector}'");
         var business = new Business
         {
             Name = registrationDto.BusinessName,
@@ -71,11 +87,11 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         // LINK BUSINESS OWNER TO BUSINESS
         var businessUser = new BusinessUser
         {
-            Business = business,
-            User = businessOwner,
-            Role = "Owner",
-            IsVerified = false,
-            IsActive = true,
+            Business    = business,
+            User        = businessOwner,
+            Role        = "Owner",
+            IsVerified  = false,
+            IsActive    = true,
         };
 
         _context.BusinessUsers.Add(businessUser);
@@ -83,19 +99,23 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
         // AUDIT LOG ENTRY
         _context.AuditLogs.Add(new AuditLog
         {
-            Action = "CREATE_BUSINESS",
+            Action = isSelfRegistration ? "SELF_REGISTER_BUSINESS" : "CREATE_BUSINESS",
             EntityName = "BUSINESS",
             EntityId = business.Id,
-            UserId = adminUserId,
-            ChangeBy = "SYSTEM_ADMIN"
+            UserId = adminUserId ?? businessOwner.Id,
+            ChangeBy = isSelfRegistration ? "SELF_REGISTRATION" : "SYSTEM_ADMIN"
         });
 
         await _context.SaveChangesAsync();
 
-        var emailSent = await SendSetPasswordLinkAsync(businessOwner, EmailType.Welcome);
+        var ownerEmailSent  = await SendSetPasswordLinkAsync(businessOwner, EmailType.Welcome);
 
         // RECORD EMAIL STATUS
-        businessOwner.CredentialsEmailSent = emailSent;
+        businessOwner.CredentialsEmailSent = ownerEmailSent ;
+
+         if (isSelfRegistration)
+            await NotifyAdminsOfNewRegistrationAsync(business, businessOwner);
+
         await _context.SaveChangesAsync();
 
         return new BusinessRegistrationResponseDto
@@ -110,9 +130,15 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             BusinessEmail = business.Email,
             IndustryGroup = business.IndustryGroup,
             IndustrySector = business.IndustrySector,
-            Message = emailSent
-                ? "Business created. Set password link sent."
-                : "Business created. Email failed — resend activitation."
+            Message = ownerEmailSent
+                ? isSelfRegistration
+                ? "Registration successful. Check your email to set your password."
+                : "Business created. Set password link sent."
+                : isSelfRegistration
+                ? "Registration successful. Email delivery failed — contact support."
+                : "Business created. Email failed — resend activation."
+                // ? "Business created. Set password link sent."
+                // : "Business created. Email failed — resend activitation."
         };
     }
 
@@ -426,6 +452,42 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             // Console.WriteLine($"StatusCode: {ex}");
             Console.WriteLine(ex.Message);
             // Console.WriteLine(ex.InnerException?.Message);
+            return false;
+        }
+    }
+
+    private async Task<bool> NotifyAdminsOfNewRegistrationAsync(Business business, User owner)
+    {
+        try
+        {
+            var adminEmails = await _context.Users
+                .Where(u => u.Role.ToLower() == "super_admin" || u.Role.ToLower() == "Admin")
+                .Select(u => u.Email)
+                .ToListAsync();
+
+            if (adminEmails.Count == 0) return false;
+
+            // Build your email body however your email service expects it
+            var subject = $"New Business Registration — {business.Name}";
+            var body    = EmailTemplates.AdminNotification(new AdminNotificationEmailDto
+            {
+                Name = business.Name,
+                IndustryGroup = business.IndustryGroup??"",
+                IndustrySector = business.IndustrySector?? "",
+                FullName = owner.FullName,
+                Email = owner.Email,
+                SubscriptionPlan = business.SubscriptionPlan
+            });
+
+             var tasks = adminEmails.Select(email =>
+                _emailService.SendAdminNotificationEmailAsync(subject, body));
+
+            await Task.WhenAll(tasks);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"{ex.Message}, Failed to notify admins of new business registration for '{business.Name}'");
             return false;
         }
     }
