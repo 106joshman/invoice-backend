@@ -186,7 +186,7 @@ public static class EmailTemplates
                     <!-- CTA Button -->
                     <tr>
                         <td align="center" style="padding:0 32px 36px;">
-                        <a href="#" style="display:inline-block;background-color:#1a1a2e;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:6px;letter-spacing:0.5px;">
+                        <a href="https://invoice-booking.vercel.app" style="display:inline-block;background-color:#1a1a2e;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 28px;border-radius:6px;letter-spacing:0.5px;">
                             Review in Admin Dashboard
                         </a>
                         </td>
