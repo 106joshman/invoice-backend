@@ -422,7 +422,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             var businessName = await _context.BusinessUsers
                 .Where(bu => bu.UserId == user.Id)
                 .Select(bu => bu.Business.Name)
-                .FirstOrDefaultAsync() ?? "Your Business";
+                .FirstOrDefaultAsync() ?? "Business Name";
 
             if (emailType == EmailType.PasswordReset)
             {
@@ -433,7 +433,7 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                     link
                 );
             }
-            else
+            else if (emailType == EmailType.Welcome)
             {
                 await _emailService.SendWelcomeSetPasswordEmailAsync(
                     user.Email,
@@ -450,13 +450,13 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
             // Console.WriteLine($"Set password email failed: {ex.Message}");
             // Console.WriteLine("❌ SMTP ERROR");
             // Console.WriteLine($"StatusCode: {ex}");
-            Console.WriteLine(ex.Message);
+            Console.WriteLine($"Failed to send {emailType} email to {user.Email}: {ex.Message}");
             // Console.WriteLine(ex.InnerException?.Message);
             return false;
         }
     }
 
-    private async Task<bool> NotifyAdminsOfNewRegistrationAsync(Business business, User owner)
+    private async Task<bool>NotifyAdminsOfNewRegistrationAsync(Business business, User owner)
     {
         try
         {
@@ -465,22 +465,41 @@ public class AuthService(ApplicationDbContext context, IConfiguration configurat
                 .Select(u => u.Email)
                 .ToListAsync();
 
-            if (adminEmails.Count == 0) return false;
+            // var specificEmails = _configuration
+            //     .GetSection("EmailSettings:NotificationEmails")
+            //     .Get<List<string>>() ?? new List<string>();
+            var specificEmails = (_configuration["EmailSettings:NotificationEmails"] ?? "")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .ToList();
+
+            // merge, deduplicating case-insensitively
+            var newEmails = specificEmails
+                .Where(e => !string.IsNullOrWhiteSpace(e) &&
+                            !adminEmails.Contains(e, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+
+            adminEmails.AddRange(newEmails);
+
+            if (adminEmails.Count == 0)
+            {
+                Console.WriteLine("No admin emails configured to receive notifications.");
+                return false;
+            }
 
             // Build your email body however your email service expects it
             var subject = $"New Business Registration — {business.Name}";
             var body    = EmailTemplates.AdminNotification(new AdminNotificationEmailDto
             {
                 Name = business.Name,
-                IndustryGroup = business.IndustryGroup??"",
-                IndustrySector = business.IndustrySector?? "",
+                IndustryGroup = business.IndustryGroup ?? "",
+                IndustrySector = business.IndustrySector ?? "",
                 FullName = owner.FullName,
                 Email = owner.Email,
                 SubscriptionPlan = business.SubscriptionPlan
             });
 
              var tasks = adminEmails.Select(email =>
-                _emailService.SendAdminNotificationEmailAsync(subject, body));
+                _emailService.SendAdminNotificationEmailAsync(email, subject, body));
 
             await Task.WhenAll(tasks);
             return true;

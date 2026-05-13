@@ -118,10 +118,11 @@ public class EmailService
     }
 
     public async Task SendAdminNotificationEmailAsync(
+        string adminEmail,
         string subject,
         string body)
     {
-         var adminEmail = _configuration["EmailSettings:AdminEmail"] ?? throw new Exception("Admin email not configured.");
+        //  var adminEmail = _configuration["EmailSettings:AdminEmail"] ?? throw new Exception("Admin email not configured.");
 
         await SendEmailAsync(
             adminEmail,

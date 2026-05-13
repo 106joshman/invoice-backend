@@ -35,6 +35,7 @@ public class UserService(ApplicationDbContext context, EmailService _emailServic
             user.FullName = userUpdateDto.FullName;
         if (!string.IsNullOrWhiteSpace(userUpdateDto.Email))
             user.Email = userUpdateDto.Email;
+            
         if (!string.IsNullOrWhiteSpace(userUpdateDto.PhoneNumber))
             user.PhoneNumber = userUpdateDto.PhoneNumber;
 
